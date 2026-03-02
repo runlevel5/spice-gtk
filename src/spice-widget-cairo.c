@@ -106,7 +106,7 @@ void spice_cairo_draw_event(SpiceDisplay *display, cairo_t *cr)
         cairo_region_subtract_rectangle(region, &rect);
     }
 
-    spice_compat_cairo_region (cr, region);
+    gdk_cairo_region (cr, region);
     cairo_region_destroy (region);
 
     /* Need to set a real solid color, because the default is usually

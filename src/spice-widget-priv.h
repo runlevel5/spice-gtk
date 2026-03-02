@@ -29,7 +29,6 @@
 #include "spice-widget.h"
 #include "spice-common.h"
 #include "spice-gtk-session.h"
-#include "spice-gtk-compat.h"
 
 #include <gst/video/videooverlay.h>
 
@@ -101,7 +100,7 @@ struct _SpiceDisplayPrivate {
     bool                    mouse_have_pointer;
     GdkCursor               *mouse_cursor;
     GdkPixbuf               *mouse_pixbuf;
-    SpiceCompatPoint        mouse_hotspot;
+    GdkPoint                mouse_hotspot;
     GdkCursor               *show_cursor;
     int                     mouse_last_x;
     int                     mouse_last_y;
@@ -138,7 +137,6 @@ struct _SpiceDisplayPrivate {
     struct {
         gboolean            context_ready;
         gboolean            enabled;
-#if !GTK_CHECK_VERSION(4, 0, 0)
         EGLSurface          surface;
         EGLDisplay          display;
         EGLConfig           conf;
@@ -149,9 +147,6 @@ struct _SpiceDisplayPrivate {
         guint               tex_pointer_id;
         guint               prog;
         EGLImageKHR         image;
-#else
-        GdkTexture          *scanout_texture;
-#endif
         gboolean            call_draw_done;
         SpiceGlScanout2     scanout;
     } egl;
@@ -172,7 +167,7 @@ void     spice_cairo_draw_event                   (SpiceDisplay *display, cairo_
 gboolean spice_allow_scaling                      (SpiceDisplay *display);
 void     spice_display_get_scaling           (SpiceDisplay *display, double *s, int *x, int *y, int *w, int *h);
 gboolean spice_egl_init                      (SpiceDisplay *display, GError **err);
-gboolean spice_egl_realize_display           (SpiceDisplay *display, SpiceCompatSurface *win,
+gboolean spice_egl_realize_display           (SpiceDisplay *display, GdkWindow *win,
                                               GError **err);
 void     spice_egl_unrealize_display         (SpiceDisplay *display);
 void     spice_egl_update_display            (SpiceDisplay *display);

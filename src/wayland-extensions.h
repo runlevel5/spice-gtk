@@ -31,5 +31,3 @@ int spice_wayland_extensions_lock_pointer(GtkWidget *widget,
                                           void (*lock_cb)(void *, struct zwp_locked_pointer_v1 *),
                                           void (*unlock_cb)(void *, struct zwp_locked_pointer_v1 *));
 int spice_wayland_extensions_unlock_pointer(GtkWidget *widget);
-int spice_wayland_extensions_inhibit_keyboard_shortcuts(GtkWidget *widget);
-int spice_wayland_extensions_uninhibit_keyboard_shortcuts(GtkWidget *widget);

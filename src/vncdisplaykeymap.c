@@ -15,7 +15,6 @@
 #include "vncdisplaykeymap.h"
 
 #include "spice-common.h"
-#include "spice-gtk-compat.h"
 
 #undef G_LOG_DOMAIN
 #define G_LOG_DOMAIN "vnc-keymap"
@@ -58,24 +57,12 @@ static struct {
 static unsigned int ref_count_for_untranslated_keys = 0;
 
 #ifdef GDK_WINDOWING_WAYLAND
-#ifdef HAVE_GTK_4
-#include <gdk/wayland/gdkwayland.h>
-#else
 #include <gdk/gdkwayland.h>
-#endif
 #endif
 
 #ifdef GDK_WINDOWING_BROADWAY
-#ifdef HAVE_GTK_4
-#include <gdk/broadway/gdkbroadway.h>
-#else
 #include <gdk/gdkbroadway.h>
 #endif
-#endif
-
-/* X11 keysym-to-XT scancode table, used by Broadway backend and as
- * a fallback when gdk_display_map_keyval() fails to resolve a keyval */
-#include "vncdisplaykeymap_x112xtkbd.h"
 
 #if defined(GDK_WINDOWING_X11) || defined(GDK_WINDOWING_WAYLAND)
 /* Xorg Linux + evdev (offset evdev keycodes) */
@@ -83,11 +70,7 @@ static unsigned int ref_count_for_untranslated_keys = 0;
 #endif
 
 #ifdef GDK_WINDOWING_X11
-#ifdef HAVE_GTK_4
-#include <gdk/x11/gdkx.h>
-#else
 #include <gdk/gdkx.h>
-#endif
 #include <X11/XKBlib.h>
 #include <stdbool.h>
 #include <string.h>
@@ -102,11 +85,7 @@ static unsigned int ref_count_for_untranslated_keys = 0;
 #endif
 
 #ifdef GDK_WINDOWING_WIN32
-#ifdef HAVE_GTK_4
-#include <gdk/win32/gdkwin32.h>
-#else
 #include <gdk/gdkwin32.h>
-#endif
 
 /* Win32 native virtual keycodes */
 #include "vncdisplaykeymap_win322xtkbd.h"
@@ -120,7 +99,8 @@ static unsigned int ref_count_for_untranslated_keys = 0;
 #endif
 
 #ifdef GDK_WINDOWING_BROADWAY
-/* keymap_x112xtkbd already included above */
+/* X11 keysyms */
+#include "vncdisplaykeymap_x112xtkbd.h"
 #endif
 
 #ifdef GDK_WINDOWING_X11
@@ -156,14 +136,14 @@ static gboolean check_for_xquartz(GdkDisplay *dpy)
 }
 #endif
 
-const guint16 *vnc_display_keymap_gdk2xtkbd_table(SpiceCompatSurface *window,
+const guint16 *vnc_display_keymap_gdk2xtkbd_table(GdkWindow *window,
                                                   size_t *maplen)
 {
 #ifdef GDK_WINDOWING_X11
-	if (SPICE_COMPAT_IS_X11_SURFACE(window)) {
+	if (GDK_IS_X11_WINDOW(window)) {
 		XkbDescPtr desc;
 		const gchar *keycodes = NULL;
-                GdkDisplay *dpy = spice_compat_surface_get_display(window);
+                GdkDisplay *dpy = gdk_window_get_display(window);
 
 		/* There is no easy way to determine what X11 server
 		 * and platform & keyboard driver is in use. Thus we
@@ -179,11 +159,7 @@ const guint16 *vnc_display_keymap_gdk2xtkbd_table(SpiceCompatSurface *window,
 				      XkbUseCoreKbd);
 		if (desc) {
 			if (XkbGetNames(xdisplay, XkbKeycodesNameMask, desc) == Success) {
-#if GTK_CHECK_VERSION(4, 0, 0)
-				keycodes = gdk_x11_get_xatom_name_for_display(dpy, desc->names->keycodes);
-#else
 				keycodes = gdk_x11_get_xatom_name(desc->names->keycodes);
-#endif
 				if (!keycodes)
 					g_warning("could not lookup keycode name");
 			}
@@ -225,7 +201,7 @@ const guint16 *vnc_display_keymap_gdk2xtkbd_table(SpiceCompatSurface *window,
 #endif
 
 #ifdef GDK_WINDOWING_WIN32
-	if (SPICE_COMPAT_IS_WIN32_SURFACE(window)) {
+	if (GDK_IS_WIN32_WINDOW(window)) {
 		VNC_DEBUG("Using Win32 virtual keycode mapping");
 		*maplen = G_N_ELEMENTS(keymap_win322xtkbd);
 		return keymap_win322xtkbd;
@@ -233,7 +209,7 @@ const guint16 *vnc_display_keymap_gdk2xtkbd_table(SpiceCompatSurface *window,
 #endif
 
 #ifdef GDK_WINDOWING_QUARTZ
-	if (SPICE_COMPAT_IS_MACOS_SURFACE(window)) {
+	if (GDK_IS_QUARTZ_WINDOW(window)) {
 		VNC_DEBUG("Using OS-X virtual keycode mapping");
 		*maplen = G_N_ELEMENTS(keymap_osx2xtkbd);
 		return keymap_osx2xtkbd;
@@ -241,7 +217,7 @@ const guint16 *vnc_display_keymap_gdk2xtkbd_table(SpiceCompatSurface *window,
 #endif
 
 #ifdef GDK_WINDOWING_WAYLAND
-	if (SPICE_COMPAT_IS_WAYLAND_SURFACE(window)) {
+	if (GDK_IS_WAYLAND_WINDOW(window)) {
 		VNC_DEBUG("Using Wayland Xorg/evdev virtual keycode mapping");
 		*maplen = G_N_ELEMENTS(keymap_xorgevdev2xtkbd);
 		return keymap_xorgevdev2xtkbd;
@@ -249,7 +225,7 @@ const guint16 *vnc_display_keymap_gdk2xtkbd_table(SpiceCompatSurface *window,
 #endif
 
 #ifdef GDK_WINDOWING_BROADWAY
-	if (SPICE_COMPAT_IS_BROADWAY_SURFACE(window)) {
+	if (GDK_IS_BROADWAY_WINDOW(window)) {
                 g_warning("experimental: using broadway, x11 virtual keysym mapping - with very limited support. See also https://bugzilla.gnome.org/show_bug.cgi?id=700105");
 
 			*maplen = G_N_ELEMENTS(keymap_x112xtkbd);
@@ -282,12 +258,14 @@ guint16 vnc_display_keymap_gdk2xtkbd(const guint16 *keycode_map,
 void vnc_display_keyval_set_entries(void)
 {
 	size_t i;
+	GdkKeymap *keymap = gdk_keymap_get_for_display(gdk_display_get_default());
 
 	if (ref_count_for_untranslated_keys == 0)
 		for (i = 0; i < sizeof(untranslated_keys) / sizeof(untranslated_keys[0]); i++)
-			spice_compat_map_keyval(untranslated_keys[i].keyval,
-						&untranslated_keys[i].keys,
-						&untranslated_keys[i].n_keys);
+			gdk_keymap_get_entries_for_keyval(keymap,
+							  untranslated_keys[i].keyval,
+							  &untranslated_keys[i].keys,
+							  &untranslated_keys[i].n_keys);
 	ref_count_for_untranslated_keys++;
 }
 
@@ -311,25 +289,12 @@ guint vnc_display_keyval_from_keycode(guint keycode, guint keyval)
 {
 	size_t i;
 	for (i = 0; i < sizeof(untranslated_keys) / sizeof(untranslated_keys[0]); i++) {
-		if (untranslated_keys[i].keys != NULL &&
-		    keycode == untranslated_keys[i].keys[0].keycode) {
+		if (keycode == untranslated_keys[i].keys[0].keycode) {
 			return untranslated_keys[i].keyval;
 		}
 	}
 
 	return keyval;
-}
-
-/* Look up an XT scancode directly from an X11 keysym (GDK keyval).
- * This bypasses the GDK keymap entirely, using the static
- * keymap_x112xtkbd table generated from keymaps.csv.  Useful as a
- * fallback when gdk_display_map_keyval() cannot resolve a keyval
- * (e.g. Alt_L on XQuartz where Option maps to Meta instead). */
-guint16 vnc_display_keymap_keyval2xtkbd(guint keyval)
-{
-	if (keyval >= G_N_ELEMENTS(keymap_x112xtkbd))
-		return 0;
-	return keymap_x112xtkbd[keyval];
 }
 /*
  * Local variables:

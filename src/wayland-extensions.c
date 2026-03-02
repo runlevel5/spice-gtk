@@ -23,19 +23,13 @@
 
 #include <gtk/gtk.h>
 
-#ifdef HAVE_GTK_4
-#include <gdk/wayland/gdkwayland.h>
-#else
 #include <gdk/gdkwayland.h>
-#endif
 #include <wayland-client-core.h>
 #include <glib-unix.h>
 #include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "relative-pointer-unstable-v1-client-protocol.h"
-#include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
 
 #include "wayland-extensions.h"
-#include "spice-gtk-compat.h"
 
 static void *
 registry_bind_gtk(GtkWidget *widget,
@@ -86,16 +80,6 @@ registry_handle_global(void *data,
                                pointer_constraints,
                                (GDestroyNotify)zwp_pointer_constraints_v1_destroy);
         g_object_set_data(G_OBJECT(widget), "zwp_pointer_constraints_v1_name", GUINT_TO_POINTER(name));
-    } else if (g_strcmp0(interface, "zwp_keyboard_shortcuts_inhibit_manager_v1") == 0) {
-        struct zwp_keyboard_shortcuts_inhibit_manager_v1 *shortcuts_inhibit_manager;
-        shortcuts_inhibit_manager = registry_bind_gtk(widget, name,
-                                                      &zwp_keyboard_shortcuts_inhibit_manager_v1_interface,
-                                                      1);
-        g_object_set_data_full(G_OBJECT(widget),
-                               "zwp_keyboard_shortcuts_inhibit_manager_v1",
-                               shortcuts_inhibit_manager,
-                               (GDestroyNotify)zwp_keyboard_shortcuts_inhibit_manager_v1_destroy);
-        g_object_set_data(G_OBJECT(widget), "zwp_keyboard_shortcuts_inhibit_manager_v1_name", GUINT_TO_POINTER(name));
     }
 }
 
@@ -122,15 +106,6 @@ registry_handle_global_remove(void *data,
     if (pointer_constraints && pointer_constraints_name == name) {
         g_object_set_data_full(G_OBJECT(widget), "zwp_pointer_constraints_v1", NULL, NULL);
         g_object_steal_data(G_OBJECT(widget), "zwp_pointer_constraints_v1_name");
-    }
-
-    struct zwp_keyboard_shortcuts_inhibit_manager_v1 *shortcuts_inhibit_manager;
-    uint32_t shortcuts_inhibit_manager_name = 0;
-    shortcuts_inhibit_manager = g_object_get_data(G_OBJECT(widget), "zwp_keyboard_shortcuts_inhibit_manager_v1");
-    shortcuts_inhibit_manager_name = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(widget), "zwp_keyboard_shortcuts_inhibit_manager_v1_name"));
-    if (shortcuts_inhibit_manager && shortcuts_inhibit_manager_name == name) {
-        g_object_set_data_full(G_OBJECT(widget), "zwp_keyboard_shortcuts_inhibit_manager_v1", NULL, NULL);
-        g_object_steal_data(G_OBJECT(widget), "zwp_keyboard_shortcuts_inhibit_manager_v1_name");
     }
 }
 
@@ -246,9 +221,9 @@ spice_wayland_extensions_finalize(GtkWidget *widget)
 
 
 static GdkDevice *
-spice_gdk_window_get_pointing_device(SpiceCompatSurface *surface)
+spice_gdk_window_get_pointing_device(GdkWindow *window)
 {
-    GdkDisplay *gdk_display = spice_compat_surface_get_display(surface);
+    GdkDisplay *gdk_display = gdk_window_get_display(window);
 
     return gdk_seat_get_pointer(gdk_display_get_default_seat(gdk_display));
 }
@@ -271,14 +246,14 @@ spice_wayland_extensions_enable_relative_pointer(GtkWidget *widget,
 
     if (relative_pointer == NULL) {
         struct zwp_relative_pointer_manager_v1 *relative_pointer_manager;
-        SpiceCompatSurface *surface = spice_compat_widget_get_surface(widget);
+        GdkWindow *window = gtk_widget_get_window(widget);
         struct wl_pointer *pointer;
 
         relative_pointer_manager = g_object_get_data(G_OBJECT(widget), "zwp_relative_pointer_manager_v1");
         if (relative_pointer_manager == NULL)
             return -1;
 
-        pointer = gdk_wayland_device_get_wl_pointer(spice_gdk_window_get_pointing_device(surface));
+        pointer = gdk_wayland_device_get_wl_pointer(spice_gdk_window_get_pointing_device(window));
         relative_pointer = zwp_relative_pointer_manager_v1_get_relative_pointer(relative_pointer_manager,
                                                                                 pointer);
 
@@ -317,7 +292,7 @@ spice_wayland_extensions_lock_pointer(GtkWidget *widget,
 {
     struct zwp_pointer_constraints_v1 *pointer_constraints;
     struct zwp_locked_pointer_v1 *locked_pointer;
-    SpiceCompatSurface *surface;
+    GdkWindow *window;
     struct wl_pointer *pointer;
 
     g_return_val_if_fail(GTK_IS_WIDGET(widget), -1);
@@ -329,10 +304,10 @@ spice_wayland_extensions_lock_pointer(GtkWidget *widget,
         return 0;
     }
 
-    surface = spice_compat_widget_get_surface(widget);
-    pointer = gdk_wayland_device_get_wl_pointer(spice_gdk_window_get_pointing_device(surface));
+    window = gtk_widget_get_window(widget);
+    pointer = gdk_wayland_device_get_wl_pointer(spice_gdk_window_get_pointing_device(window));
     locked_pointer = zwp_pointer_constraints_v1_lock_pointer(pointer_constraints,
-                                                             spice_compat_wayland_surface_get_wl_surface(surface),
+                                                             gdk_wayland_window_get_wl_surface(window),
                                                              pointer,
                                                              NULL,
                                                              ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);
@@ -357,68 +332,6 @@ spice_wayland_extensions_unlock_pointer(GtkWidget *widget)
     g_return_val_if_fail(GTK_IS_WIDGET(widget), -1);
 
     g_object_set_data(G_OBJECT(widget), "zwp_locked_pointer_v1", NULL);
-
-    return 0;
-}
-
-static struct wl_seat *
-spice_wayland_get_wl_seat(GtkWidget *widget)
-{
-    GdkDisplay *gdk_display = gtk_widget_get_display(widget);
-    GdkSeat *gdk_seat = gdk_display_get_default_seat(gdk_display);
-
-#if GTK_CHECK_VERSION(4, 0, 0)
-    return gdk_wayland_seat_get_wl_seat(gdk_seat);
-#else
-    GdkDevice *pointer = gdk_seat_get_pointer(gdk_seat);
-    return gdk_wayland_device_get_wl_seat(pointer);
-#endif
-}
-
-int
-spice_wayland_extensions_inhibit_keyboard_shortcuts(GtkWidget *widget)
-{
-    struct zwp_keyboard_shortcuts_inhibit_manager_v1 *manager;
-    struct zwp_keyboard_shortcuts_inhibitor_v1 *inhibitor;
-    SpiceCompatSurface *surface;
-    struct wl_seat *wl_seat;
-
-    g_return_val_if_fail(GTK_IS_WIDGET(widget), -1);
-
-    inhibitor = g_object_get_data(G_OBJECT(widget), "zwp_keyboard_shortcuts_inhibitor_v1");
-    if (inhibitor != NULL) {
-        /* Already inhibited */
-        return 0;
-    }
-
-    manager = g_object_get_data(G_OBJECT(widget), "zwp_keyboard_shortcuts_inhibit_manager_v1");
-    if (manager == NULL)
-        return -1;
-
-    surface = spice_compat_widget_get_surface(widget);
-    wl_seat = spice_wayland_get_wl_seat(widget);
-
-    inhibitor = zwp_keyboard_shortcuts_inhibit_manager_v1_inhibit_shortcuts(
-        manager,
-        spice_compat_wayland_surface_get_wl_surface(surface),
-        wl_seat);
-
-    g_object_set_data_full(G_OBJECT(widget),
-                           "zwp_keyboard_shortcuts_inhibitor_v1",
-                           inhibitor,
-                           (GDestroyNotify)zwp_keyboard_shortcuts_inhibitor_v1_destroy);
-
-    return 0;
-}
-
-int
-spice_wayland_extensions_uninhibit_keyboard_shortcuts(GtkWidget *widget)
-{
-    g_return_val_if_fail(GTK_IS_WIDGET(widget), -1);
-
-    /* Setting the data to NULL triggers the destroy notify, which calls
-     * zwp_keyboard_shortcuts_inhibitor_v1_destroy() */
-    g_object_set_data(G_OBJECT(widget), "zwp_keyboard_shortcuts_inhibitor_v1", NULL);
 
     return 0;
 }
