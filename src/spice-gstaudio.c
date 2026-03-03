@@ -342,7 +342,7 @@ static void playback_data(SpicePlaybackChannel *channel,
 
     g_return_if_fail(p != NULL);
 
-    audio = g_memdup(audio, size); /* TODO: try to avoid memory copy */
+    audio = g_memdup2(audio, size); /* TODO: try to avoid memory copy */
     buf = gst_buffer_new_wrapped(audio, size);
     gst_app_src_push_buffer(GST_APP_SRC(p->playback.src), buf);
 }

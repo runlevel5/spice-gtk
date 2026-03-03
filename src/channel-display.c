@@ -865,7 +865,7 @@ static void palette_put(SpicePaletteCache *cache, SpicePalette *palette)
         SPICE_CONTAINEROF(cache, SpiceDisplayChannelPrivate, palette_cache);
 
     cache_add(c->palettes, palette->unique,
-              g_memdup(palette, sizeof(SpicePalette) +
+              g_memdup2(palette, sizeof(SpicePalette) +
                        palette->num_ents * sizeof(palette->ents[0])));
 }
 

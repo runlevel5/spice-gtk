@@ -1056,7 +1056,7 @@ static void monitors_align(VDAgentMonConfig *monitors, int nmonitors)
         return;
 
     /* sort by distance from origin */
-    sorted_monitors = g_memdup(monitors, nmonitors * sizeof(VDAgentMonConfig));
+    sorted_monitors = g_memdup2(monitors, nmonitors * sizeof(VDAgentMonConfig));
     g_qsort_with_data(sorted_monitors, nmonitors, sizeof(VDAgentMonConfig), monitors_cmp, NULL);
 
     /* super-KISS ltr alignment, feel free to improve */
