@@ -1281,7 +1281,7 @@ static void mouse_warp(SpiceDisplay *display, gdouble x_root, gdouble y_root)
     GdkRectangle geom;
     SpiceCompatSurface *surface = spice_compat_widget_get_surface(GTK_WIDGET(display));
     GdkDisplay *gdk_display = spice_compat_surface_get_display(surface);
-    GdkMonitor *monitor = gdk_display_get_primary_monitor(gdk_display);
+    GdkMonitor *monitor = spice_compat_display_get_primary_monitor(gdk_display);
     if (monitor == NULL) {
         /* No primary monitor set, using last mouse coordinates */
         monitor = gdk_display_get_monitor_at_point(gdk_display, d->mouse_last_x, d->mouse_last_y);
@@ -1747,7 +1747,8 @@ static void update_display(SpiceDisplay *display)
 
 static gboolean key_event_cb(SpiceDisplay *display, GdkEventType type,
                              guint keyval, guint hardware_keycode,
-                             GdkModifierType state)
+                             GdkModifierType state,
+                             GtkEventController *controller)
 {
     SpiceDisplayPrivate *d = display->priv;
     GtkWidget *widget = GTK_WIDGET(display);
@@ -1762,22 +1763,22 @@ static gboolean key_event_cb(SpiceDisplay *display, GdkEventType type,
 
     /* Retrieve is_modifier and group from the underlying GdkEvent */
     {
-        GdkEvent *event = gtk_get_current_event();
+        GdkEvent *event = spice_compat_get_current_event(controller);
         if (event) {
-            GdkEventKey *key = (GdkEventKey *) event;
-            is_modifier = key->is_modifier;
-            group = key->group;
-            gdk_event_free(event);
+            is_modifier = spice_compat_key_event_get_is_modifier(event);
+            group = spice_compat_key_event_get_group(event);
+            if (SPICE_COMPAT_CURRENT_EVENT_NEEDS_FREE)
+                spice_compat_event_free(event);
         }
     }
 
 #ifdef G_OS_WIN32
     {
         /* Try to get scancode with gdk_event_get_scancode. */
-        GdkEvent *event = gtk_get_current_event();
+        GdkEvent *event = spice_compat_get_current_event(controller);
         native_scancode = event ? gdk_event_get_scancode(event) : 0;
-        if (event)
-            gdk_event_free(event);
+        if (event && SPICE_COMPAT_CURRENT_EVENT_NEEDS_FREE)
+            spice_compat_event_free(event);
     }
     if (native_scancode) {
         scancode = native_scancode & 0x1ff;
@@ -1944,20 +1945,22 @@ static gboolean key_event_cb(SpiceDisplay *display, GdkEventType type,
     return true;
 }
 
-static gboolean key_pressed_cb(GtkEventControllerKey *controller G_GNUC_UNUSED,
+static gboolean key_pressed_cb(GtkEventControllerKey *controller,
                                 guint keyval, guint keycode,
                                 GdkModifierType state, gpointer user_data)
 {
     return key_event_cb(SPICE_DISPLAY(user_data), GDK_KEY_PRESS,
-                        keyval, keycode, state);
+                        keyval, keycode, state,
+                        GTK_EVENT_CONTROLLER(controller));
 }
 
-static void key_released_cb(GtkEventControllerKey *controller G_GNUC_UNUSED,
+static void key_released_cb(GtkEventControllerKey *controller,
                              guint keyval, guint keycode,
                              GdkModifierType state, gpointer user_data)
 {
     key_event_cb(SPICE_DISPLAY(user_data), GDK_KEY_RELEASE,
-                 keyval, keycode, state);
+                 keyval, keycode, state,
+                 GTK_EVENT_CONTROLLER(controller));
 }
 
 static guint get_scancode_from_keyval(SpiceDisplay *display, guint keyval)
@@ -1966,9 +1969,8 @@ static guint get_scancode_from_keyval(SpiceDisplay *display, guint keyval)
     guint keycode = 0;
     GdkKeymapKey *keys = NULL;
     gint n_keys = 0;
-    GdkKeymap *keymap = gdk_keymap_get_for_display(gdk_display_get_default());
 
-    if (gdk_keymap_get_entries_for_keyval(keymap, keyval, &keys, &n_keys)) {
+    if (spice_compat_map_keyval(keyval, &keys, &n_keys)) {
         /* FIXME what about levels? */
         keycode = keys[0].keycode;
         g_free(keys);
@@ -2194,7 +2196,7 @@ static void transform_input(SpiceDisplay *display,
     *input_y = floor (window_y * is);
 }
 
-static void motion_cb(GtkEventControllerMotion *controller G_GNUC_UNUSED,
+static void motion_cb(GtkEventControllerMotion *controller,
                       gdouble x, gdouble y, gpointer user_data)
 {
     SpiceDisplay *display = SPICE_DISPLAY(user_data);
@@ -2218,13 +2220,12 @@ static void motion_cb(GtkEventControllerMotion *controller G_GNUC_UNUSED,
 
     /* Get modifier state and root coordinates from the underlying event */
     {
-        GdkEvent *event = gtk_get_current_event();
+        GdkEvent *event = spice_compat_get_current_event(GTK_EVENT_CONTROLLER(controller));
         if (event) {
-            GdkEventMotion *motion = (GdkEventMotion *) event;
-            state = motion->state;
-            x_root = motion->x_root;
-            y_root = motion->y_root;
-            gdk_event_free(event);
+            state = spice_compat_motion_event_get_state(event);
+            spice_compat_motion_event_get_root_coords(event, &x_root, &y_root);
+            if (SPICE_COMPAT_CURRENT_EVENT_NEEDS_FREE)
+                spice_compat_event_free(event);
         }
     }
 
@@ -2267,7 +2268,7 @@ static void press_and_release(SpiceDisplay *display,
     spice_inputs_channel_button_release(d->inputs, button, button_state);
 }
 
-static void scroll_cb(GtkEventControllerScroll *controller G_GNUC_UNUSED,
+static void scroll_cb(GtkEventControllerScroll *controller,
                       gdouble dx G_GNUC_UNUSED, gdouble dy, gpointer user_data)
 {
     SpiceDisplay *display = SPICE_DISPLAY(user_data);
@@ -2283,7 +2284,7 @@ static void scroll_cb(GtkEventControllerScroll *controller G_GNUC_UNUSED,
         return;
 
     /* Get modifier state from the underlying event */
-    gtk_get_current_event_state(&state);
+    state = spice_compat_get_current_event_state(GTK_EVENT_CONTROLLER(controller));
     button_state = button_mask_gdk_to_spice(state);
 
     d->scroll_delta_y += dy;
@@ -2299,14 +2300,15 @@ static void scroll_cb(GtkEventControllerScroll *controller G_GNUC_UNUSED,
 }
 
 static void button_event_cb(SpiceDisplay *display, GdkEventType type,
-                            guint button_num, gdouble x, gdouble y)
+                            guint button_num, gdouble x, gdouble y,
+                            GtkEventController *controller)
 {
     SpiceDisplayPrivate *d = display->priv;
     GtkWidget *widget = GTK_WIDGET(display);
     int ix, iy;
     GdkModifierType state = 0;
 
-    gtk_get_current_event_state(&state);
+    state = spice_compat_get_current_event_state(controller);
 
     DISPLAY_DEBUG(display, "%s %s: button %u, state 0x%x", __FUNCTION__,
                   type == GDK_BUTTON_PRESS ? "press" : "release",
@@ -2376,7 +2378,8 @@ static void button_pressed_cb(SpiceCompat_GestureButton *gesture,
 {
     SpiceDisplay *display = SPICE_DISPLAY(user_data);
     guint button = gtk_gesture_single_get_current_button(GTK_GESTURE_SINGLE(gesture));
-    button_event_cb(display, GDK_BUTTON_PRESS, button, x, y);
+    button_event_cb(display, GDK_BUTTON_PRESS, button, x, y,
+                    GTK_EVENT_CONTROLLER(gesture));
 }
 
 static void button_released_cb(SpiceCompat_GestureButton *gesture,
@@ -2385,7 +2388,8 @@ static void button_released_cb(SpiceCompat_GestureButton *gesture,
 {
     SpiceDisplay *display = SPICE_DISPLAY(user_data);
     guint button = gtk_gesture_single_get_current_button(GTK_GESTURE_SINGLE(gesture));
-    button_event_cb(display, GDK_BUTTON_RELEASE, button, x, y);
+    button_event_cb(display, GDK_BUTTON_RELEASE, button, x, y,
+                    GTK_EVENT_CONTROLLER(gesture));
 }
 
 static void size_allocate(GtkWidget *widget, GtkAllocation *conf, gpointer data)
@@ -3191,10 +3195,10 @@ static void update_mouse_cursor(SpiceDisplay *display)
     }
 #endif
 
-    cursor = gdk_cursor_new_from_surface(gtk_widget_get_display(GTK_WIDGET(display)),
-                                         d->cursor_surface,
-                                         hotspot_x,
-                                         hotspot_y);
+    cursor = spice_compat_cursor_new_from_surface(gtk_widget_get_display(GTK_WIDGET(display)),
+                                                  d->cursor_surface,
+                                                  hotspot_x,
+                                                  hotspot_y);
 
 #ifdef HAVE_EGL
     if (egl_enabled(d))

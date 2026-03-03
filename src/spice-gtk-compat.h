@@ -524,3 +524,312 @@ spice_compat_cairo_surface_from_pixbuf(GdkPixbuf *pixbuf, int scale,
     return gdk_cairo_surface_create_from_pixbuf(pixbuf, scale, surface);
 #endif
 }
+
+/* ------------------------------------------------------------------ */
+/* 21. gdk_event_free() → gdk_event_unref()                          */
+/*                                                                    */
+/* GTK 3: gdk_event_free(event)                                      */
+/* GTK 4: gdk_event_unref(event) — GdkEvent is now refcounted        */
+/* ------------------------------------------------------------------ */
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #define spice_compat_event_free(event)  gdk_event_unref(event)
+#else
+  #define spice_compat_event_free(event)  gdk_event_free(event)
+#endif
+
+/* ------------------------------------------------------------------ */
+/* 22. gtk_get_current_event() → event controller API                 */
+/*                                                                    */
+/* GTK 3: gtk_get_current_event() returns a copy (must be freed).     */
+/* GTK 4: gtk_get_current_event() was removed. Use                    */
+/*         gtk_event_controller_get_current_event() instead, which    */
+/*         returns a borrowed reference (do NOT free).                 */
+/*                                                                    */
+/* We provide two approaches:                                         */
+/*  a) spice_compat_get_current_event(controller) — returns the       */
+/*     event. In GTK3 it's a copy (caller must free), in GTK4 it's   */
+/*     borrowed (caller must NOT free).                               */
+/*  b) SPICE_COMPAT_CURRENT_EVENT_NEEDS_FREE — TRUE in GTK3, FALSE   */
+/*     in GTK4, so callers know whether to free.                      */
+/* ------------------------------------------------------------------ */
+#if GTK_CHECK_VERSION(4, 0, 0)
+
+static inline GdkEvent *
+spice_compat_get_current_event(GtkEventController *controller)
+{
+    return (GdkEvent *)gtk_event_controller_get_current_event(controller);
+}
+
+  #define SPICE_COMPAT_CURRENT_EVENT_NEEDS_FREE  FALSE
+
+#else /* GTK 3 */
+
+static inline GdkEvent *
+spice_compat_get_current_event(GtkEventController *controller G_GNUC_UNUSED)
+{
+    return gtk_get_current_event();
+}
+
+  #define SPICE_COMPAT_CURRENT_EVENT_NEEDS_FREE  TRUE
+
+#endif /* GTK version check */
+
+/* ------------------------------------------------------------------ */
+/* 23. gtk_get_current_event_state() replacement                      */
+/*                                                                    */
+/* GTK 3: gtk_get_current_event_state(&state) — global function.     */
+/* GTK 4: Removed. Use the event from the controller instead.         */
+/*                                                                    */
+/* We provide a controller-based wrapper that works on both versions. */
+/* ------------------------------------------------------------------ */
+static inline GdkModifierType
+spice_compat_get_current_event_state(GtkEventController *controller G_GNUC_UNUSED)
+{
+    GdkModifierType state = 0;
+#if GTK_CHECK_VERSION(4, 0, 0)
+    GdkEvent *event = gtk_event_controller_get_current_event(controller);
+    if (event)
+        state = gdk_event_get_modifier_state(event);
+#else
+    gtk_get_current_event_state(&state);
+#endif
+    return state;
+}
+
+/* ------------------------------------------------------------------ */
+/* 24. GdkEvent field access — key events                             */
+/*                                                                    */
+/* GTK 3: GdkEventKey struct with ->group, ->is_modifier fields.     */
+/* GTK 4: GdkEvent is opaque. Use accessor functions:                 */
+/*         gdk_key_event_get_layout() for group,                      */
+/*         no direct is_modifier — check keyval against known mods.   */
+/* ------------------------------------------------------------------ */
+static inline int
+spice_compat_key_event_get_group(GdkEvent *event)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    return gdk_key_event_get_layout(event);
+#else
+    return ((GdkEventKey *)event)->group;
+#endif
+}
+
+static inline gboolean
+spice_compat_key_event_get_is_modifier(GdkEvent *event)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* GTK4 removed is_modifier. Check if the keyval is a known modifier. */
+    guint keyval = gdk_key_event_get_keyval(event);
+    return (keyval == GDK_KEY_Shift_L || keyval == GDK_KEY_Shift_R ||
+            keyval == GDK_KEY_Control_L || keyval == GDK_KEY_Control_R ||
+            keyval == GDK_KEY_Alt_L || keyval == GDK_KEY_Alt_R ||
+            keyval == GDK_KEY_Meta_L || keyval == GDK_KEY_Meta_R ||
+            keyval == GDK_KEY_Super_L || keyval == GDK_KEY_Super_R ||
+            keyval == GDK_KEY_Hyper_L || keyval == GDK_KEY_Hyper_R ||
+            keyval == GDK_KEY_Caps_Lock || keyval == GDK_KEY_Num_Lock ||
+            keyval == GDK_KEY_Scroll_Lock ||
+            keyval == GDK_KEY_ISO_Lock || keyval == GDK_KEY_ISO_Level3_Shift ||
+            keyval == GDK_KEY_ISO_Level5_Shift);
+#else
+    return ((GdkEventKey *)event)->is_modifier;
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 25. GdkEvent field access — motion events                          */
+/*                                                                    */
+/* GTK 3: GdkEventMotion struct with ->state, ->x_root, ->y_root.   */
+/* GTK 4: GdkEvent is opaque. Use accessor functions. Note that       */
+/*         x_root/y_root concept doesn't exist in GTK4 (Wayland has  */
+/*         no global coords). We fall back to 0.                      */
+/* ------------------------------------------------------------------ */
+static inline GdkModifierType
+spice_compat_motion_event_get_state(GdkEvent *event)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    return gdk_event_get_modifier_state(event);
+#else
+    return ((GdkEventMotion *)event)->state;
+#endif
+}
+
+static inline void
+spice_compat_motion_event_get_root_coords(GdkEvent *event G_GNUC_UNUSED,
+                                          gdouble *x_root, gdouble *y_root)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* GTK4/Wayland has no concept of root/global coordinates.
+     * Return 0,0 — callers that need root coords (mouse warping)
+     * will need separate handling in Step 2.6. */
+    *x_root = 0;
+    *y_root = 0;
+#else
+    *x_root = ((GdkEventMotion *)event)->x_root;
+    *y_root = ((GdkEventMotion *)event)->y_root;
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 26. GdkKeymap → GdkDisplay keyval mapping                          */
+/*                                                                    */
+/* GTK 3: gdk_keymap_get_for_display() + gdk_keymap_get_entries_for_  */
+/*         keyval(keymap, keyval, &keys, &n_keys)                     */
+/* GTK 4: GdkKeymap removed. Use                                     */
+/*         gdk_display_map_keyval(display, keyval, &keys, &n_keys)   */
+/*                                                                    */
+/* We wrap the keyval→keycode mapping into a single function.         */
+/* ------------------------------------------------------------------ */
+static inline gboolean
+spice_compat_map_keyval(guint keyval, GdkKeymapKey **keys, gint *n_keys)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    return gdk_display_map_keyval(gdk_display_get_default(), keyval, keys, n_keys);
+#else
+    GdkKeymap *keymap = gdk_keymap_get_for_display(gdk_display_get_default());
+    return gdk_keymap_get_entries_for_keyval(keymap, keyval, keys, n_keys);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 27. Keyboard lock state queries                                    */
+/*                                                                    */
+/* GTK 3: gdk_keymap_get_caps_lock_state(keymap), etc.               */
+/* GTK 4: GdkKeymap removed. Lock state moved to GdkDevice:          */
+/*         gdk_device_get_caps_lock_state(device), etc.               */
+/*         Use the default seat's keyboard device.                    */
+/* ------------------------------------------------------------------ */
+static inline gboolean
+spice_compat_get_caps_lock_state(void)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    GdkSeat *seat = gdk_display_get_default_seat(gdk_display_get_default());
+    GdkDevice *keyboard = gdk_seat_get_keyboard(seat);
+    return gdk_device_get_caps_lock_state(keyboard);
+#else
+    GdkKeymap *keymap = gdk_keymap_get_for_display(gdk_display_get_default());
+    return gdk_keymap_get_caps_lock_state(keymap);
+#endif
+}
+
+static inline gboolean
+spice_compat_get_num_lock_state(void)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    GdkSeat *seat = gdk_display_get_default_seat(gdk_display_get_default());
+    GdkDevice *keyboard = gdk_seat_get_keyboard(seat);
+    return gdk_device_get_num_lock_state(keyboard);
+#else
+    GdkKeymap *keymap = gdk_keymap_get_for_display(gdk_display_get_default());
+    return gdk_keymap_get_num_lock_state(keymap);
+#endif
+}
+
+static inline gboolean
+spice_compat_get_scroll_lock_state(void)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    GdkSeat *seat = gdk_display_get_default_seat(gdk_display_get_default());
+    GdkDevice *keyboard = gdk_seat_get_keyboard(seat);
+    return gdk_device_get_scroll_lock_state(keyboard);
+#else
+    GdkKeymap *keymap = gdk_keymap_get_for_display(gdk_display_get_default());
+    return gdk_keymap_get_scroll_lock_state(keymap);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 28. GdkKeymap "state-changed" signal → GdkDevice "changed"        */
+/*                                                                    */
+/* GTK 3: Connect to GdkKeymap's "state-changed" signal.             */
+/* GTK 4: GdkKeymap removed. Connect to the seat keyboard's          */
+/*         "changed" signal instead, which fires on modifier changes. */
+/*                                                                    */
+/* We provide helpers to get the object and signal name so the caller */
+/* can use spice_g_signal_connect_object() directly.                  */
+/*                                                                    */
+/* Note: The callback signature differs:                              */
+/*   GTK 3: void cb(GdkKeymap *keymap, gpointer data)               */
+/*   GTK 4: void cb(GdkDevice *device, gpointer data)               */
+/* Both are compatible with a generic (GObject*, gpointer) pattern.  */
+/* ------------------------------------------------------------------ */
+static inline gpointer
+spice_compat_get_modifier_state_source(void)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    GdkSeat *seat = gdk_display_get_default_seat(gdk_display_get_default());
+    return gdk_seat_get_keyboard(seat);
+#else
+    return gdk_keymap_get_for_display(gdk_display_get_default());
+#endif
+}
+
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #define SPICE_COMPAT_MODIFIER_STATE_SIGNAL  "changed"
+#else
+  #define SPICE_COMPAT_MODIFIER_STATE_SIGNAL  "state-changed"
+#endif
+
+/* ------------------------------------------------------------------ */
+/* 29. gdk_cursor_new_from_surface() → gdk_cursor_new_from_texture() */
+/*                                                                    */
+/* GTK 3: gdk_cursor_new_from_surface(display, surface, x, y)        */
+/* GTK 4: gdk_cursor_new_from_surface() removed. Use:                */
+/*         gdk_cursor_new_from_texture(texture, hotspot_x, hotspot_y,*/
+/*                                     fallback)                      */
+/*         Must convert cairo_surface_t to GdkTexture first.          */
+/* ------------------------------------------------------------------ */
+static inline GdkCursor *
+spice_compat_cursor_new_from_surface(GdkDisplay *display G_GNUC_UNUSED,
+                                     cairo_surface_t *surface,
+                                     double hotspot_x, double hotspot_y)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    GdkTexture *texture;
+    GdkCursor *cursor;
+    int width, height;
+    int stride;
+    unsigned char *data;
+    GBytes *bytes;
+
+    width = cairo_image_surface_get_width(surface);
+    height = cairo_image_surface_get_height(surface);
+    stride = cairo_image_surface_get_stride(surface);
+
+    cairo_surface_flush(surface);
+    data = cairo_image_surface_get_data(surface);
+    bytes = g_bytes_new(data, stride * height);
+
+    texture = gdk_memory_texture_new(width, height,
+                                     GDK_MEMORY_B8G8R8A8_PREMULTIPLIED,
+                                     bytes, stride);
+    g_bytes_unref(bytes);
+
+    cursor = gdk_cursor_new_from_texture(texture,
+                                         (int)hotspot_x, (int)hotspot_y,
+                                         NULL);
+    g_object_unref(texture);
+    return cursor;
+#else
+    return gdk_cursor_new_from_surface(display, surface, hotspot_x, hotspot_y);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 30. gdk_display_get_primary_monitor() — removed in GTK4            */
+/*                                                                    */
+/* GTK 3: gdk_display_get_primary_monitor(display)                    */
+/* GTK 4: No concept of "primary" monitor. Return the first monitor  */
+/*         from the monitor list as a fallback, or NULL.              */
+/* ------------------------------------------------------------------ */
+static inline GdkMonitor *
+spice_compat_display_get_primary_monitor(GdkDisplay *display)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    GListModel *monitors = gdk_display_get_monitors(display);
+    if (g_list_model_get_n_items(monitors) > 0)
+        return GDK_MONITOR(g_list_model_get_item(monitors, 0));
+    return NULL;
+#else
+    return gdk_display_get_primary_monitor(display);
+#endif
+}

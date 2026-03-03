@@ -47,6 +47,7 @@
 #include "spice-session-priv.h"
 #include "spice-util-priv.h"
 #include "spice-channel-priv.h"
+#include "spice-gtk-compat.h"
 
 #define CLIPBOARD_LAST (VD_AGENT_CLIPBOARD_SELECTION_SECONDARY + 1)
 
@@ -128,18 +129,16 @@ enum {
 static guint32 get_keyboard_lock_modifiers(void)
 {
     guint32 modifiers = 0;
-/* Ignore GLib's too-new warnings */
-    GdkKeymap *keyboard = gdk_keymap_get_for_display(gdk_display_get_default());
 
-    if (gdk_keymap_get_caps_lock_state(keyboard)) {
+    if (spice_compat_get_caps_lock_state()) {
         modifiers |= SPICE_INPUTS_CAPS_LOCK;
     }
 
-    if (gdk_keymap_get_num_lock_state(keyboard)) {
+    if (spice_compat_get_num_lock_state()) {
         modifiers |= SPICE_INPUTS_NUM_LOCK;
     }
 
-    if (gdk_keymap_get_scroll_lock_state(keyboard)) {
+    if (spice_compat_get_scroll_lock_state()) {
         modifiers |= SPICE_INPUTS_SCROLL_LOCK;
     }
     return modifiers;
@@ -168,7 +167,7 @@ static void spice_gtk_session_sync_keyboard_modifiers_for_channel(SpiceGtkSessio
     }
 }
 
-static void keymap_modifiers_changed(GdkKeymap *keymap, gpointer data)
+static void keymap_modifiers_changed(gpointer source G_GNUC_UNUSED, gpointer data)
 {
     SpiceGtkSession *self = data;
 
@@ -193,7 +192,6 @@ static void guest_modifiers_changed(SpiceInputsChannel *inputs, gpointer data)
 static void spice_gtk_session_init(SpiceGtkSession *self)
 {
     SpiceGtkSessionPrivate *s;
-    GdkKeymap *keymap = gdk_keymap_get_for_display(gdk_display_get_default());
 
     s = self->priv = spice_gtk_session_get_instance_private(self);
 
@@ -209,7 +207,8 @@ static void spice_gtk_session_init(SpiceGtkSession *self)
     s->clipboard_primary = gtk_clipboard_get(GDK_SELECTION_PRIMARY);
     g_signal_connect(G_OBJECT(s->clipboard_primary), "owner-change",
                      G_CALLBACK(clipboard_owner_change), self);
-    spice_g_signal_connect_object(keymap, "state-changed",
+    spice_g_signal_connect_object(spice_compat_get_modifier_state_source(),
+                                  SPICE_COMPAT_MODIFIER_STATE_SIGNAL,
                                   G_CALLBACK(keymap_modifiers_changed), self, 0);
 }
 
