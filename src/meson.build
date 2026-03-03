@@ -311,8 +311,6 @@ if spice_gtk_has_gtk
   # Source files for spice-client-gtk
   #
 
-  spice_gtk_api_name = 'spice-client-gtk-@0@.0'.format(spice_gtk_version)
-
   spice_client_gtk_headers = [
     'spice-client-gtk.h',
     'spice-grabsequence.h',
@@ -321,14 +319,14 @@ if spice_gtk_has_gtk
     'usb-device-widget.h',
   ]
 
-  install_headers(spice_client_gtk_headers, subdir : spice_gtk_api_name)
+  install_headers(spice_client_gtk_headers, subdir : 'spice-client-gtk-3.0')
 
   # generate spice-widget-enums.[ch]
   spice_widget_enums = gnome.mkenums_simple('spice-widget-enums',
                                             sources : 'spice-widget.h',
                                             install_header : true,
                                             body_prefix: '#include "get-type-declarations.h"',
-                                            install_dir : spice_gtk_includedir / spice_gtk_api_name)
+                                            install_dir : spice_gtk_includedir / 'spice-client-gtk-3.0')
 
   spice_client_gtk_introspection_sources = [
     spice_client_gtk_headers,
@@ -347,7 +345,6 @@ if spice_gtk_has_gtk
     'spice-file-transfer-task.h',
     'spice-grabsequence.h',
     'spice-grabsequence-priv.h',
-    'spice-gtk-compat.h',
     'spice-gtk-session-priv.h',
     'spice-util.c',
     'spice-util-priv.h',
@@ -389,7 +386,6 @@ if spice_gtk_has_gtk
     generated_protocols = [
       [ 'pointer-constraints', 'v1' ],
       [ 'relative-pointer', 'v1' ],
-      [ 'keyboard-shortcuts-inhibit', 'v1' ],
     ]
 
     foreach proto: generated_protocols
@@ -438,22 +434,18 @@ if spice_gtk_has_gtk
 
   # soversion
   # http://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
-  if spice_gtk_version == '4'
-    # GTK4 target: reset soversion for new ABI
-    spice_client_gtk_so_version = '0.0.0'
-  else
-    spice_client_gtk_current = 6
-    spice_client_gtk_revision = 1
-    spice_client_gtk_age = 1
-    spice_client_gtk_so_version = '@0@.@1@.@2@'.format(spice_client_gtk_current - spice_client_gtk_age,
-                                                        spice_client_gtk_age,
-                                                        spice_client_gtk_revision)
-  endif
+  spice_client_gtk_current = 6
+  spice_client_gtk_revision = 1
+  spice_client_gtk_age = 1
+  spice_client_gtk_so_version = '@0@.@1@.@2@'.format(spice_client_gtk_current - spice_client_gtk_age,
+                                                     spice_client_gtk_age,
+                                                     spice_client_gtk_revision)
   summary_info += {'libspice-client-gtk.so version': spice_client_gtk_so_version}
 
-  spice_client_gtk_lib = library(spice_gtk_api_name, spice_client_gtk_sources,
+  spice_client_gtk_lib = library('spice-client-gtk-3.0', spice_client_gtk_sources,
                                  version : spice_client_gtk_so_version,
                                  install : true,
+                                 c_args : spice_gtk3_version_cflags,
                                  link_args : [spice_gtk_version_script],
                                  link_depends : spice_client_gtk_syms,
                                  dependencies : [spice_client_glib_dep, spice_gtk_deps, spice_wayland_deps],
@@ -465,25 +457,20 @@ if spice_gtk_has_gtk
 
   if spice_gtk_has_introspection
     #
-    # SpiceClientGtk-X.0.gir
+    # SpiceClientGtk-3.0.gir
     #
-    if spice_gtk_version == '4'
-      spice_gtk_gir_includes = ['GObject-2.0', 'Gtk-4.0', spice_client_glib_gir[0]]
-    else
-      spice_gtk_gir_includes = ['GObject-2.0', 'Gtk-3.0', spice_client_glib_gir[0]]
-    endif
     spice_client_gtk_gir = gnome.generate_gir(spice_client_gtk_lib,
-                                              export_packages : spice_gtk_api_name,
+                                              export_packages : 'spice-client-gtk-3.0',
                                               extra_args : ['--accept-unprefixed'],
                                               header : 'spice-widget.h',
-                                              includes : spice_gtk_gir_includes,
+                                              includes : ['GObject-2.0', 'Gtk-3.0', spice_client_glib_gir[0]],
                                               include_directories: spice_gtk_include,
                                               link_with : spice_client_glib_lib,
                                               identifier_prefix : 'Spice',
                                               symbol_prefix : 'spice',
                                               install : spice_gtk_has_introspection,
                                               namespace : 'SpiceClientGtk',
-                                              nsversion : '@0@.0'.format(spice_gtk_version),
+                                              nsversion : '3.0',
                                               sources : spice_client_gtk_introspection_sources)
   endif
 endif
