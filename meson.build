@@ -141,10 +141,18 @@ endforeach
 
 # gtk
 spice_gtk_has_gtk = false
-gtk_version_required = '3.24'
-d = dependency('gtk+-3.0', version : '>= @0@'.format(gtk_version_required),
+spice_gtk_version = get_option('gtk_version')
+if spice_gtk_version == '4'
+  gtk_version_required = '4.0'
+  gtk_pkg = 'gtk4'
+else
+  gtk_version_required = '3.24'
+  gtk_pkg = 'gtk+-3.0'
+endif
+d = dependency(gtk_pkg, version : '>= @0@'.format(gtk_version_required),
                required: get_option('gtk'))
 summary_info += {'gtk': d.found()}
+summary_info += {'gtk_version': spice_gtk_version}
 if d.found()
   spice_gtk_deps += d
   spice_gtk_deps += dependency('epoxy', required: spice_gtk_has_egl)
@@ -165,20 +173,27 @@ endif
 # wayland protocols
 spice_gtk_has_wayland_protocols = false
 # Check if gtk is enabled and supports the wayland backend
-if host_machine.system() != 'windows' and spice_gtk_has_gtk and compiler.has_header('gtk-3.0/gdk/gdkwayland.h')
-  d = dependency('wayland-protocols', version: '>= 1.17', required: get_option('wayland-protocols'))
-  summary_info += {'wayland-protocols': d.found()}
-  if d.found()
-    spice_gtk_config_data.set('HAVE_WAYLAND_PROTOCOLS', '1')
-    dir_wp_base = d.get_variable(pkgconfig: 'pkgdatadir')
-    dep_scanner = dependency('wayland-scanner', native: true)
-    prog_scanner = find_program(dep_scanner.get_variable(pkgconfig: 'wayland_scanner'))
+if host_machine.system() != 'windows' and spice_gtk_has_gtk
+  if spice_gtk_version == '4'
+    has_wayland_backend = compiler.has_header('gtk-4.0/gdk/wayland/gdkwayland.h')
+  else
+    has_wayland_backend = compiler.has_header('gtk-3.0/gdk/gdkwayland.h')
+  endif
+  if has_wayland_backend
+    d = dependency('wayland-protocols', version: '>= 1.17', required: get_option('wayland-protocols'))
+    summary_info += {'wayland-protocols': d.found()}
+    if d.found()
+      spice_gtk_config_data.set('HAVE_WAYLAND_PROTOCOLS', '1')
+      dir_wp_base = d.get_variable(pkgconfig: 'pkgdatadir')
+      dep_scanner = dependency('wayland-scanner', native: true)
+      prog_scanner = find_program(dep_scanner.get_variable(pkgconfig: 'wayland_scanner'))
 
-    wayland_libs_version_required = '1.17.0'
-    spice_wayland_deps += dependency('wayland-server', version : '>= @0@'.format(wayland_libs_version_required))
-    spice_wayland_deps += dependency('wayland-cursor', version : '>= @0@'.format(wayland_libs_version_required))
-    spice_wayland_deps += dependency('wayland-client', version : '>= @0@'.format(wayland_libs_version_required))
-    spice_gtk_has_wayland_protocols = true
+      wayland_libs_version_required = '1.17.0'
+      spice_wayland_deps += dependency('wayland-server', version : '>= @0@'.format(wayland_libs_version_required))
+      spice_wayland_deps += dependency('wayland-cursor', version : '>= @0@'.format(wayland_libs_version_required))
+      spice_wayland_deps += dependency('wayland-client', version : '>= @0@'.format(wayland_libs_version_required))
+      spice_gtk_has_wayland_protocols = true
+    endif
   endif
 endif
 
@@ -400,7 +415,12 @@ spice_gtk_global_cflags += ['-DGLIB_VERSION_MIN_REQUIRED=@0@'.format(glib_encode
                             '-DGLIB_VERSION_MAX_ALLOWED=@0@'.format(glib_encoded_version)]
 
 if spice_gtk_has_gtk
-  gtk_encoded_version='GDK_VERSION_@0@'.format(gtk_version_required.underscorify())
+  if spice_gtk_version == '4'
+    gtk_encoded_version = 'GDK_VERSION_4_0'
+    spice_gtk_config_data.set('HAVE_GTK_4', '1')
+  else
+    gtk_encoded_version='GDK_VERSION_@0@'.format(gtk_version_required.underscorify())
+  endif
   spice_gtk_global_cflags += ['-DGDK_VERSION_MIN_REQUIRED=@0@'.format(gtk_encoded_version),
                               '-DGDK_VERSION_MAX_ALLOWED=@0@'.format(gtk_encoded_version)]
 endif
@@ -465,10 +485,16 @@ pkgconfig.generate(spice_client_glib_lib,
 # write spice-client-gtk.pc
 #
 if spice_gtk_has_gtk
+  spice_gtk_pc_name = 'spice-client-gtk-@0@.0'.format(spice_gtk_version)
+  if spice_gtk_version == '4'
+    spice_gtk_pc_requires = ['spice-client-glib-2.0', 'gtk4', 'glib-2.0', 'gobject-2.0']
+  else
+    spice_gtk_pc_requires = ['spice-client-glib-2.0', 'gtk+-3.0', 'glib-2.0', 'gobject-2.0']
+  endif
   pkgconfig.generate(spice_client_gtk_lib,
-                     description : 'SPICE Client Gtk 3.0 library',
-                     subdirs : 'spice-client-gtk-3.0',
-                     requires : ['spice-client-glib-2.0', 'gtk+-3.0', 'glib-2.0', 'gobject-2.0'],
+                     description : 'SPICE Client Gtk @0@.0 library'.format(spice_gtk_version),
+                     subdirs : spice_gtk_pc_name,
+                     requires : spice_gtk_pc_requires,
                      variables : 'exec_prefix=${prefix}')
 endif
 

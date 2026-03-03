@@ -16,8 +16,10 @@ endforeach
 
 #
 # spicy
+# Note: spicy is a developer test tool that uses many deprecated GTK3 APIs.
+# It is not built for GTK4 targets.
 #
-if spice_gtk_has_gtk
+if spice_gtk_has_gtk and spice_gtk_version == '3'
   spicy_sources = [
     'spicy.c',
     'spicy-connect.c',

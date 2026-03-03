@@ -29,6 +29,7 @@
 #include "spice-widget.h"
 #include "spice-common.h"
 #include "spice-gtk-session.h"
+#include "spice-gtk-compat.h"
 
 #include <gst/video/videooverlay.h>
 
@@ -100,7 +101,7 @@ struct _SpiceDisplayPrivate {
     bool                    mouse_have_pointer;
     GdkCursor               *mouse_cursor;
     GdkPixbuf               *mouse_pixbuf;
-    GdkPoint                mouse_hotspot;
+    SpiceCompatPoint        mouse_hotspot;
     GdkCursor               *show_cursor;
     int                     mouse_last_x;
     int                     mouse_last_y;

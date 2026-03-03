@@ -141,14 +141,14 @@ static gboolean gst_draw_event(GtkWidget *widget, cairo_t *cr, gpointer data);
 /* Event controller callbacks (GTK 3.24+) */
 static gboolean key_pressed_cb(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer user_data);
 static void key_released_cb(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer user_data);
-static void focus_in_cb(GtkEventControllerKey *controller, gpointer user_data);
-static void focus_out_cb(GtkEventControllerKey *controller, gpointer user_data);
+static void focus_in_cb(GtkEventController *controller, gpointer user_data);
+static void focus_out_cb(GtkEventController *controller, gpointer user_data);
 static void enter_cb(GtkEventControllerMotion *controller, gdouble x, gdouble y, gpointer user_data);
 static void leave_cb(GtkEventControllerMotion *controller, gpointer user_data);
 static void motion_cb(GtkEventControllerMotion *controller, gdouble x, gdouble y, gpointer user_data);
 static void scroll_cb(GtkEventControllerScroll *controller, gdouble dx, gdouble dy, gpointer user_data);
-static void button_pressed_cb(GtkGestureMultiPress *gesture, gint n_press, gdouble x, gdouble y, gpointer user_data);
-static void button_released_cb(GtkGestureMultiPress *gesture, gint n_press, gdouble x, gdouble y, gpointer user_data);
+static void button_pressed_cb(SpiceCompat_GestureButton *gesture, gint n_press, gdouble x, gdouble y, gpointer user_data);
+static void button_released_cb(SpiceCompat_GestureButton *gesture, gint n_press, gdouble x, gdouble y, gpointer user_data);
 
 /* ---------------------------------------------------------------- */
 
@@ -674,7 +674,7 @@ static void spice_display_init(SpiceDisplay *display)
 
     d = display->priv = spice_display_get_instance_private(display);
     d->stack = GTK_STACK(gtk_stack_new());
-    gtk_box_pack_start(GTK_BOX(display), GTK_WIDGET(d->stack), TRUE, TRUE, 0);
+    spice_compat_box_pack_start(GTK_BOX(display), GTK_WIDGET(d->stack), TRUE, TRUE, 0);
     area = gtk_drawing_area_new();
 
     g_object_connect(area,
@@ -705,8 +705,8 @@ static void spice_display_init(SpiceDisplay *display)
     gtk_label_set_selectable(GTK_LABEL(d->label), true);
     gtk_stack_add_named(d->stack, d->label, "label");
 
-    gtk_widget_show_all(GTK_WIDGET(d->stack));
-    gtk_widget_show(widget);
+    spice_compat_widget_show_all(GTK_WIDGET(d->stack));
+    spice_compat_widget_show(widget);
 
     g_signal_connect(display, "grab-broken-event", G_CALLBACK(grab_broken), NULL);
     g_signal_connect(display, "grab-notify", G_CALLBACK(grab_notify), NULL);
@@ -716,33 +716,33 @@ static void spice_display_init(SpiceDisplay *display)
                      G_CALLBACK(drag_data_received_callback), NULL);
     g_signal_connect(display, "size-allocate", G_CALLBACK(size_allocate), NULL);
 
-    gtk_widget_add_events(widget,
-                          GDK_POINTER_MOTION_MASK |
-                          GDK_BUTTON_PRESS_MASK |
-                          GDK_BUTTON_RELEASE_MASK |
-                          GDK_BUTTON_MOTION_MASK |
-                          GDK_ENTER_NOTIFY_MASK |
-                          GDK_LEAVE_NOTIFY_MASK |
-                          GDK_KEY_PRESS_MASK |
-                          /* on Wayland, only smooth-scroll events are emitted */
-                          GDK_SMOOTH_SCROLL_MASK |
-                          GDK_SCROLL_MASK);
+    spice_compat_widget_add_events(widget,
+                           GDK_POINTER_MOTION_MASK |
+                           GDK_BUTTON_PRESS_MASK |
+                           GDK_BUTTON_RELEASE_MASK |
+                           GDK_BUTTON_MOTION_MASK |
+                           GDK_ENTER_NOTIFY_MASK |
+                           GDK_LEAVE_NOTIFY_MASK |
+                           GDK_KEY_PRESS_MASK |
+                           /* on Wayland, only smooth-scroll events are emitted */
+                           GDK_SMOOTH_SCROLL_MASK |
+                           GDK_SCROLL_MASK);
     gtk_widget_set_can_focus(widget, true);
 
     /* Create event controllers (GTK 3.24+).
      * In GTK 3.24, constructors take a widget and auto-attach.
      * In GTK4, focus handling moves to GtkEventControllerFocus. */
 
-    /* Key controller — handles key press/release and focus in/out */
-    d->key_controller = gtk_event_controller_key_new(widget);
+    /* Key controller — handles key press/release */
+    d->key_controller = spice_compat_event_controller_key_new(widget);
     gtk_event_controller_set_propagation_phase(d->key_controller, GTK_PHASE_BUBBLE);
     g_signal_connect(d->key_controller, "key-pressed", G_CALLBACK(key_pressed_cb), display);
     g_signal_connect(d->key_controller, "key-released", G_CALLBACK(key_released_cb), display);
-    g_signal_connect(d->key_controller, "focus-in", G_CALLBACK(focus_in_cb), display);
-    g_signal_connect(d->key_controller, "focus-out", G_CALLBACK(focus_out_cb), display);
+    spice_compat_connect_focus(d->key_controller, widget,
+                               G_CALLBACK(focus_in_cb), G_CALLBACK(focus_out_cb), display);
 
     /* Motion controller — handles pointer enter/leave/motion */
-    d->motion_controller = gtk_event_controller_motion_new(widget);
+    d->motion_controller = spice_compat_event_controller_motion_new(widget);
     gtk_event_controller_set_propagation_phase(d->motion_controller, GTK_PHASE_BUBBLE);
     g_signal_connect(d->motion_controller, "enter", G_CALLBACK(enter_cb), display);
     g_signal_connect(d->motion_controller, "leave", G_CALLBACK(leave_cb), display);
@@ -751,14 +751,14 @@ static void spice_display_init(SpiceDisplay *display)
     /* Scroll controller — handles scroll wheel events.
      * Use VERTICAL only (not DISCRETE) so we receive raw deltas and
      * can accumulate fractional smooth-scroll values ourselves. */
-    d->scroll_controller = gtk_event_controller_scroll_new(widget,
+    d->scroll_controller = spice_compat_event_controller_scroll_new(widget,
         GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
     gtk_event_controller_set_propagation_phase(d->scroll_controller, GTK_PHASE_BUBBLE);
     g_signal_connect(d->scroll_controller, "scroll", G_CALLBACK(scroll_cb), display);
 
     /* Button gesture — handles mouse button press/release.
      * Set button=0 to handle all mouse buttons, not just button 1. */
-    d->button_gesture = gtk_gesture_multi_press_new(widget);
+    d->button_gesture = spice_compat_gesture_button_new(widget);
     gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(d->button_gesture), 0);
     gtk_event_controller_set_propagation_phase(
         GTK_EVENT_CONTROLLER(d->button_gesture), GTK_PHASE_BUBBLE);
@@ -2043,7 +2043,7 @@ static void leave_cb(GtkEventControllerMotion *controller G_GNUC_UNUSED,
     try_keyboard_ungrab(display);
 }
 
-static void focus_in_cb(GtkEventControllerKey *controller G_GNUC_UNUSED,
+static void focus_in_cb(GtkEventController *controller G_GNUC_UNUSED,
                         gpointer user_data)
 {
     SpiceDisplay *display = SPICE_DISPLAY(user_data);
@@ -2080,7 +2080,7 @@ static void focus_in_cb(GtkEventControllerKey *controller G_GNUC_UNUSED,
         update_display(display);
 }
 
-static void focus_out_cb(GtkEventControllerKey *controller G_GNUC_UNUSED,
+static void focus_out_cb(GtkEventController *controller G_GNUC_UNUSED,
                          gpointer user_data)
 {
     SpiceDisplay *display = SPICE_DISPLAY(user_data);
@@ -2370,7 +2370,7 @@ static void button_event_cb(SpiceDisplay *display, GdkEventType type,
     }
 }
 
-static void button_pressed_cb(GtkGestureMultiPress *gesture,
+static void button_pressed_cb(SpiceCompat_GestureButton *gesture,
                                gint n_press G_GNUC_UNUSED,
                                gdouble x, gdouble y, gpointer user_data)
 {
@@ -2379,7 +2379,7 @@ static void button_pressed_cb(GtkGestureMultiPress *gesture,
     button_event_cb(display, GDK_BUTTON_PRESS, button, x, y);
 }
 
-static void button_released_cb(GtkGestureMultiPress *gesture,
+static void button_released_cb(SpiceCompat_GestureButton *gesture,
                                 gint n_press G_GNUC_UNUSED,
                                 gdouble x, gdouble y, gpointer user_data)
 {

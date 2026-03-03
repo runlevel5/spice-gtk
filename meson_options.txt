@@ -2,6 +2,12 @@ option('gtk',
     type : 'feature',
     description: 'Enable gtk+')
 
+option('gtk_version',
+    type : 'combo',
+    value : '3',
+    choices : ['3', '4'],
+    description : 'GTK major version to build against (3 or 4)')
+
 option('wayland-protocols',
     type : 'feature',
     description: 'Enable wayland protocols')
