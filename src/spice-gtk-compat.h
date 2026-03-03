@@ -1055,3 +1055,115 @@ spice_compat_box_reorder_child_to_end(GtkBox *box, GtkWidget *child)
 /* #if GTK_CHECK_VERSION(4,0,0) blocks directly in the source.       */
 /* No shim provided here; documented for completeness.               */
 /* ------------------------------------------------------------------ */
+
+/* ================================================================== */
+/* Clipboard-related compat shims                                     */
+/* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* 41. GdkAtom → const char* (MIME type string)                       */
+/*                                                                    */
+/* GTK 3: GdkAtom is an opaque pointer (interned string pointer).    */
+/*         GDK_NONE is ((GdkAtom)NULL).                               */
+/*         gdk_atom_intern_static_string(s) returns a GdkAtom.       */
+/*         gdk_atom_name(atom) returns a newly-allocated string.      */
+/*         Atom comparison uses ==.                                    */
+/* GTK 4: GdkAtom was removed entirely. MIME types are plain          */
+/*         const char* strings. We typedef GdkAtom and provide shims  */
+/*         so existing code compiles under both versions.             */
+/*                                                                    */
+/* Note: In GTK4, gdk_atom_name() shim returns g_strdup() because    */
+/* all existing callers g_free() the result.                          */
+/* ------------------------------------------------------------------ */
+#if GTK_CHECK_VERSION(4, 0, 0)
+
+typedef const char *GdkAtom;
+#define GDK_NONE  ((GdkAtom)NULL)
+
+static inline GdkAtom
+spice_compat_atom_intern(const char *atom_name)
+{
+    /* In GTK4, MIME types are just strings. The "interning" is a no-op.
+     * We cast away const to match the return type expectation, but the
+     * pointer is still to the original static string. */
+    return atom_name;
+}
+#define gdk_atom_intern_static_string(s)  spice_compat_atom_intern(s)
+
+static inline gchar *
+spice_compat_atom_name(GdkAtom atom)
+{
+    /* Callers g_free() the result, so we must return a copy */
+    return g_strdup(atom);
+}
+#define gdk_atom_name(a)  spice_compat_atom_name(a)
+
+/* Atom comparison: GTK3 uses pointer ==, GTK4 needs string compare */
+#define SPICE_COMPAT_ATOM_EQ(a, b)  (g_strcmp0((a), (b)) == 0)
+
+#else /* GTK 3 */
+
+#define SPICE_COMPAT_ATOM_EQ(a, b)  ((a) == (b))
+
+#endif /* GTK version check */
+
+/* ------------------------------------------------------------------ */
+/* 42. GtkClipboard → GdkClipboard                                    */
+/*                                                                    */
+/* GTK 3: GtkClipboard* obtained via gtk_clipboard_get(GDK_SELECTION_*)*/
+/*         Signals: "owner-change" with GdkEventOwnerChange* param.   */
+/*         Methods: set_with_owner, clear, request_targets, etc.      */
+/* GTK 4: GdkClipboard* obtained via gdk_display_get_clipboard().     */
+/*         Signal: "changed" (no event parameter).                    */
+/*         Methods: set_content, get_formats, read_text_async, etc.   */
+/*                                                                    */
+/* The APIs are fundamentally different. We provide a typedef so that */
+/* struct fields and helper function signatures compile, but the      */
+/* actual clipboard operations use #if blocks in the source.          */
+/* ------------------------------------------------------------------ */
+#if GTK_CHECK_VERSION(4, 0, 0)
+  typedef GdkClipboard  SpiceCompatClipboard;
+#else
+  typedef GtkClipboard  SpiceCompatClipboard;
+#endif
+
+/* ------------------------------------------------------------------ */
+/* 43. gtk_clipboard_clear() → gdk_clipboard_set_content(cb, NULL)    */
+/*                                                                    */
+/* GTK 3: gtk_clipboard_clear(clipboard)                              */
+/* GTK 4: gdk_clipboard_set_content(clipboard, NULL)                  */
+/* ------------------------------------------------------------------ */
+static inline void
+spice_compat_clipboard_clear(SpiceCompatClipboard *clipboard)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gdk_clipboard_set_content(clipboard, NULL);
+#else
+    gtk_clipboard_clear(clipboard);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 44. gtk_clipboard_get_owner() → gdk_clipboard_is_local()           */
+/*                                                                    */
+/* GTK 3: gtk_clipboard_get_owner(cb) returns GObject* owner or NULL. */
+/*         Used to check if we own the clipboard.                     */
+/* GTK 4: gdk_clipboard_is_local(cb) returns TRUE if local.           */
+/*         gdk_clipboard_get_content(cb) returns the content provider.*/
+/*                                                                    */
+/* There's no direct equivalent; callers need #if blocks. But we     */
+/* provide a helper for the common "is this owned by us?" check.      */
+/* ------------------------------------------------------------------ */
+static inline gboolean
+spice_compat_clipboard_is_owned_by(SpiceCompatClipboard *clipboard,
+                                   gpointer owner)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    (void)owner;
+    /* In GTK4 we check if the clipboard is local (owned by this process).
+     * The content provider check is done separately where needed. */
+    return gdk_clipboard_is_local(clipboard);
+#else
+    return (gtk_clipboard_get_owner(clipboard) == G_OBJECT(owner));
+#endif
+}
