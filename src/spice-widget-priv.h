@@ -43,12 +43,12 @@ G_BEGIN_DECLS
 typedef struct _SpiceDisplayPrivate SpiceDisplayPrivate;
 
 struct _SpiceDisplay {
-    GtkEventBox parent;
+    GtkBox parent;
     SpiceDisplayPrivate *priv;
 };
 
 struct _SpiceDisplayClass {
-    GtkEventBoxClass parent_class;
+    GtkBoxClass parent_class;
 
     /* signals */
     void (*mouse_grab)(SpiceChannel *channel, gint grabbed);
@@ -153,6 +153,12 @@ struct _SpiceDisplayPrivate {
 #endif // HAVE_EGL
     double scroll_delta_y;
     GWeakRef overlay_weak_ref;
+
+    /* Event controllers (GTK 3.24+) */
+    GtkEventController      *key_controller;
+    GtkEventController      *motion_controller;
+    GtkEventController      *scroll_controller;
+    GtkGesture              *button_gesture;
 };
 
 int      spice_cairo_image_create                 (SpiceDisplay *display);

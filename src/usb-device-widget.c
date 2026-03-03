@@ -176,7 +176,7 @@ spice_usb_device_widget_show_info_bar(SpiceUsbDeviceWidget *self,
 
     content_area = gtk_info_bar_get_content_area(GTK_INFO_BAR(info_bar));
     hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-    gtk_container_add(GTK_CONTAINER(content_area), hbox);
+    gtk_box_pack_start(GTK_BOX(content_area), hbox, TRUE, TRUE, 0);
 
     widget = gtk_image_new_from_icon_name(stock_icon_id,
                                           GTK_ICON_SIZE_SMALL_TOOLBAR);
@@ -189,7 +189,9 @@ spice_usb_device_widget_show_info_bar(SpiceUsbDeviceWidget *self,
     gtk_widget_set_margin_start(info_bar, 12);
     gtk_widget_set_halign(info_bar, GTK_ALIGN_FILL);
     gtk_box_pack_start(GTK_BOX(self), priv->info_bar, FALSE, FALSE, 0);
-    gtk_widget_show_all(priv->info_bar);
+    gtk_widget_show(widget);
+    gtk_widget_show(hbox);
+    gtk_widget_show(priv->info_bar);
 }
 
 static void
@@ -206,7 +208,7 @@ empty_cd_clicked_cb(GtkToggleButton *toggle, gpointer user_data)
     gtk_toggle_button_set_active(toggle, FALSE);
 
     dialog = gtk_file_chooser_dialog_new(_("Select ISO file or device"),
-                                         GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(self))),
+                                         GTK_WINDOW(gtk_widget_get_ancestor(GTK_WIDGET(self), GTK_TYPE_WINDOW)),
                                          GTK_FILE_CHOOSER_ACTION_OPEN,
                                          _("_Cancel"), GTK_RESPONSE_CANCEL,
                                          _("_Open"), GTK_RESPONSE_ACCEPT,
@@ -240,14 +242,15 @@ static void spice_usb_device_widget_add_empty_cd(SpiceUsbDeviceWidget *self)
     SpiceUsbDeviceWidgetPrivate *priv = self->priv;
     GtkWidget *empty_cd, *cd_label;
 
-    empty_cd = gtk_check_button_new_with_label(_("SPICE CD (empty)"));
-    cd_label = gtk_bin_get_child(GTK_BIN(empty_cd));
+    empty_cd = gtk_check_button_new();
+    cd_label = gtk_label_new(_("SPICE CD (empty)"));
     gtk_label_set_ellipsize(GTK_LABEL(cd_label), PANGO_ELLIPSIZE_MIDDLE);
+    gtk_container_add(GTK_CONTAINER(empty_cd), cd_label);
     g_signal_connect(G_OBJECT(empty_cd), "toggled", G_CALLBACK(empty_cd_clicked_cb), self);
 
     gtk_widget_set_margin_start(empty_cd, 12);
     gtk_box_pack_end(GTK_BOX(self), empty_cd, FALSE, FALSE, 0);
-    gtk_widget_show_all(empty_cd);
+    gtk_widget_show(empty_cd);
 
     priv->empty_cd = empty_cd;
 }
@@ -632,7 +635,7 @@ static void device_added_cb(SpiceUsbDeviceManager *manager,
     }
 
     spice_usb_device_widget_update_status(self);
-    gtk_widget_show_all(check);
+    gtk_widget_show(check);
 }
 
 static void destroy_widget_by_usb_device(GtkWidget *widget, gpointer user_data)

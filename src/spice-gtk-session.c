@@ -654,7 +654,7 @@ static void clipboard_get_targets(GtkClipboard *clipboard,
 
     /* GTK+ does seem to cache atoms, but not for Wayland */
     g_free(s->atoms[selection]);
-    s->atoms[selection] = g_memdup(atoms, n_atoms * sizeof(GdkAtom));
+    s->atoms[selection] = g_memdup2(atoms, n_atoms * sizeof(GdkAtom));
     s->n_atoms[selection] = n_atoms;
 
     if (s->clip_grabbed[selection]) {
@@ -886,15 +886,7 @@ static void clipboard_get(GtkClipboard *clipboard,
         goto cleanup;
     }
 
-    /* This is modeled on the implementation of gtk_dialog_run() even though
-     * these thread functions are deprecated and appears to be needed to avoid
-     * dead-lock from gtk_dialog_run().
-     */
-    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
-    gdk_threads_leave();
     g_main_loop_run(ri.loop);
-    gdk_threads_enter();
-    G_GNUC_END_IGNORE_DEPRECATIONS
 
 cleanup:
     g_clear_pointer(&ri.loop, g_main_loop_unref);
@@ -949,7 +941,7 @@ static gboolean clipboard_grab(SpiceMainChannel *main, guint selection,
 
     g_free(s->clip_targets[selection]);
     s->nclip_targets[selection] = num_targets;
-    s->clip_targets[selection] = g_memdup(targets, sizeof(GtkTargetEntry) * num_targets);
+    s->clip_targets[selection] = g_memdup2(targets, sizeof(GtkTargetEntry) * num_targets);
     /* Receiving a grab implies we've released our own grab */
     s->clip_grabbed[selection] = FALSE;
 
