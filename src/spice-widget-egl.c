@@ -323,7 +323,7 @@ gl_make_current(SpiceDisplay *display, GError **err)
     return TRUE;
 }
 
-static gboolean spice_widget_init_egl_win(SpiceDisplay *display, GdkWindow *win,
+static gboolean spice_widget_init_egl_win(SpiceDisplay *display, SpiceCompatSurface *win,
                                           GError **err)
 {
     SpiceDisplayPrivate *d = display->priv;
@@ -333,8 +333,8 @@ static gboolean spice_widget_init_egl_win(SpiceDisplay *display, GdkWindow *win,
         return TRUE;
 
 #ifdef GDK_WINDOWING_X11
-    if (GDK_IS_X11_WINDOW(win)) {
-        native = (EGLNativeWindowType)GDK_WINDOW_XID(win);
+    if (SPICE_COMPAT_IS_X11_SURFACE(win)) {
+        native = (EGLNativeWindowType)SPICE_COMPAT_SURFACE_XID(win);
     }
 #endif
 
@@ -361,14 +361,14 @@ static gboolean spice_widget_init_egl_win(SpiceDisplay *display, GdkWindow *win,
 }
 
 G_GNUC_INTERNAL
-gboolean spice_egl_realize_display(SpiceDisplay *display, GdkWindow *win, GError **err)
+gboolean spice_egl_realize_display(SpiceDisplay *display, SpiceCompatSurface *win, GError **err)
 {
     DISPLAY_DEBUG(display, "egl realize");
     if (!spice_widget_init_egl_win(display, win, err))
         return FALSE;
     gint scale_factor = gtk_widget_get_scale_factor(GTK_WIDGET(display));
-    spice_egl_resize_display(display, gdk_window_get_width(win) * scale_factor,
-                             gdk_window_get_height(win) * scale_factor);
+    spice_egl_resize_display(display, spice_compat_surface_get_width(win) * scale_factor,
+                             spice_compat_surface_get_height(win) * scale_factor);
 
     return TRUE;
 }

@@ -136,14 +136,14 @@ static gboolean check_for_xquartz(GdkDisplay *dpy)
 }
 #endif
 
-const guint16 *vnc_display_keymap_gdk2xtkbd_table(GdkWindow *window,
+const guint16 *vnc_display_keymap_gdk2xtkbd_table(SpiceCompatSurface *window,
                                                   size_t *maplen)
 {
 #ifdef GDK_WINDOWING_X11
-	if (GDK_IS_X11_WINDOW(window)) {
+	if (SPICE_COMPAT_IS_X11_SURFACE(window)) {
 		XkbDescPtr desc;
 		const gchar *keycodes = NULL;
-                GdkDisplay *dpy = gdk_window_get_display(window);
+                GdkDisplay *dpy = spice_compat_surface_get_display(window);
 
 		/* There is no easy way to determine what X11 server
 		 * and platform & keyboard driver is in use. Thus we
@@ -201,7 +201,7 @@ const guint16 *vnc_display_keymap_gdk2xtkbd_table(GdkWindow *window,
 #endif
 
 #ifdef GDK_WINDOWING_WIN32
-	if (GDK_IS_WIN32_WINDOW(window)) {
+	if (SPICE_COMPAT_IS_WIN32_SURFACE(window)) {
 		VNC_DEBUG("Using Win32 virtual keycode mapping");
 		*maplen = G_N_ELEMENTS(keymap_win322xtkbd);
 		return keymap_win322xtkbd;
@@ -209,7 +209,7 @@ const guint16 *vnc_display_keymap_gdk2xtkbd_table(GdkWindow *window,
 #endif
 
 #ifdef GDK_WINDOWING_QUARTZ
-	if (GDK_IS_QUARTZ_WINDOW(window)) {
+	if (SPICE_COMPAT_IS_MACOS_SURFACE(window)) {
 		VNC_DEBUG("Using OS-X virtual keycode mapping");
 		*maplen = G_N_ELEMENTS(keymap_osx2xtkbd);
 		return keymap_osx2xtkbd;
@@ -217,7 +217,7 @@ const guint16 *vnc_display_keymap_gdk2xtkbd_table(GdkWindow *window,
 #endif
 
 #ifdef GDK_WINDOWING_WAYLAND
-	if (GDK_IS_WAYLAND_WINDOW(window)) {
+	if (SPICE_COMPAT_IS_WAYLAND_SURFACE(window)) {
 		VNC_DEBUG("Using Wayland Xorg/evdev virtual keycode mapping");
 		*maplen = G_N_ELEMENTS(keymap_xorgevdev2xtkbd);
 		return keymap_xorgevdev2xtkbd;
@@ -225,7 +225,7 @@ const guint16 *vnc_display_keymap_gdk2xtkbd_table(GdkWindow *window,
 #endif
 
 #ifdef GDK_WINDOWING_BROADWAY
-	if (GDK_IS_BROADWAY_WINDOW(window)) {
+	if (SPICE_COMPAT_IS_BROADWAY_SURFACE(window)) {
                 g_warning("experimental: using broadway, x11 virtual keysym mapping - with very limited support. See also https://bugzilla.gnome.org/show_bug.cgi?id=700105");
 
 			*maplen = G_N_ELEMENTS(keymap_x112xtkbd);

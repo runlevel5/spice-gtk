@@ -30,6 +30,7 @@
 #include "relative-pointer-unstable-v1-client-protocol.h"
 
 #include "wayland-extensions.h"
+#include "spice-gtk-compat.h"
 
 static void *
 registry_bind_gtk(GtkWidget *widget,
@@ -221,9 +222,9 @@ spice_wayland_extensions_finalize(GtkWidget *widget)
 
 
 static GdkDevice *
-spice_gdk_window_get_pointing_device(GdkWindow *window)
+spice_gdk_window_get_pointing_device(SpiceCompatSurface *surface)
 {
-    GdkDisplay *gdk_display = gdk_window_get_display(window);
+    GdkDisplay *gdk_display = spice_compat_surface_get_display(surface);
 
     return gdk_seat_get_pointer(gdk_display_get_default_seat(gdk_display));
 }
@@ -246,14 +247,14 @@ spice_wayland_extensions_enable_relative_pointer(GtkWidget *widget,
 
     if (relative_pointer == NULL) {
         struct zwp_relative_pointer_manager_v1 *relative_pointer_manager;
-        GdkWindow *window = gtk_widget_get_window(widget);
+        SpiceCompatSurface *surface = spice_compat_widget_get_surface(widget);
         struct wl_pointer *pointer;
 
         relative_pointer_manager = g_object_get_data(G_OBJECT(widget), "zwp_relative_pointer_manager_v1");
         if (relative_pointer_manager == NULL)
             return -1;
 
-        pointer = gdk_wayland_device_get_wl_pointer(spice_gdk_window_get_pointing_device(window));
+        pointer = gdk_wayland_device_get_wl_pointer(spice_gdk_window_get_pointing_device(surface));
         relative_pointer = zwp_relative_pointer_manager_v1_get_relative_pointer(relative_pointer_manager,
                                                                                 pointer);
 
@@ -292,7 +293,7 @@ spice_wayland_extensions_lock_pointer(GtkWidget *widget,
 {
     struct zwp_pointer_constraints_v1 *pointer_constraints;
     struct zwp_locked_pointer_v1 *locked_pointer;
-    GdkWindow *window;
+    SpiceCompatSurface *surface;
     struct wl_pointer *pointer;
 
     g_return_val_if_fail(GTK_IS_WIDGET(widget), -1);
@@ -304,10 +305,10 @@ spice_wayland_extensions_lock_pointer(GtkWidget *widget,
         return 0;
     }
 
-    window = gtk_widget_get_window(widget);
-    pointer = gdk_wayland_device_get_wl_pointer(spice_gdk_window_get_pointing_device(window));
+    surface = spice_compat_widget_get_surface(widget);
+    pointer = gdk_wayland_device_get_wl_pointer(spice_gdk_window_get_pointing_device(surface));
     locked_pointer = zwp_pointer_constraints_v1_lock_pointer(pointer_constraints,
-                                                             gdk_wayland_window_get_wl_surface(window),
+                                                             spice_compat_wayland_surface_get_wl_surface(surface),
                                                              pointer,
                                                              NULL,
                                                              ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);
