@@ -610,6 +610,7 @@ static void drag_data_received_callback(SpiceDisplay *self,
     gtk_drag_finish(drag_context, TRUE, FALSE, time);
 }
 
+#if !GTK_CHECK_VERSION(4, 0, 0)
 static void grab_notify(SpiceDisplay *display, gboolean was_grabbed)
 {
     DISPLAY_DEBUG(display, "grab notify %d", was_grabbed);
@@ -617,6 +618,7 @@ static void grab_notify(SpiceDisplay *display, gboolean was_grabbed)
     if (was_grabbed == FALSE)
         release_keys(display);
 }
+#endif
 
 #ifdef HAVE_EGL
 static gboolean
@@ -709,7 +711,9 @@ static void spice_display_init(SpiceDisplay *display)
     spice_compat_widget_show(widget);
 
     g_signal_connect(display, "grab-broken-event", G_CALLBACK(grab_broken), NULL);
+#if !GTK_CHECK_VERSION(4, 0, 0)
     g_signal_connect(display, "grab-notify", G_CALLBACK(grab_notify), NULL);
+#endif
 
     gtk_drag_dest_set(widget, GTK_DEST_DEFAULT_ALL, &targets, 1, GDK_ACTION_COPY);
     g_signal_connect(display, "drag-data-received",
@@ -1284,7 +1288,7 @@ static void mouse_warp(SpiceDisplay *display, gdouble x_root, gdouble y_root)
     GdkMonitor *monitor = spice_compat_display_get_primary_monitor(gdk_display);
     if (monitor == NULL) {
         /* No primary monitor set, using last mouse coordinates */
-        monitor = gdk_display_get_monitor_at_point(gdk_display, d->mouse_last_x, d->mouse_last_y);
+        monitor = spice_compat_display_get_monitor_at_point(gdk_display, d->mouse_last_x, d->mouse_last_y);
     }
     g_return_if_fail(monitor != NULL);
     gdk_monitor_get_geometry(monitor, &geom);
@@ -1372,7 +1376,7 @@ static void try_mouse_ungrab(SpiceDisplay *display)
         return;
 
     ungrab_pointer(display);
-    gtk_grab_remove(GTK_WIDGET(display));
+    spice_compat_gtk_grab_remove(GTK_WIDGET(display));
 #ifdef G_OS_WIN32
     ClipCursor(NULL);
 #endif
@@ -2866,7 +2870,7 @@ static void primary_destroy(SpiceDisplayChannel *channel, gpointer data)
 static void queue_draw_area(SpiceDisplay *display, gint x, gint y,
                             gint width, gint height)
 {
-    if (!gtk_widget_get_has_window(GTK_WIDGET(display))) {
+    if (!spice_compat_widget_get_has_window(GTK_WIDGET(display))) {
         GtkAllocation allocation;
 
         gtk_widget_get_allocation(GTK_WIDGET(display), &allocation);

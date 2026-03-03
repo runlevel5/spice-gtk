@@ -158,7 +158,7 @@ static void spice_usb_device_widget_hide_info_bar(SpiceUsbDeviceWidget *self)
 {
     SpiceUsbDeviceWidgetPrivate *priv = self->priv;
 
-    g_clear_pointer(&priv->info_bar, gtk_widget_destroy);
+    spice_compat_clear_widget(&priv->info_bar);
 }
 
 static void
@@ -179,7 +179,7 @@ spice_usb_device_widget_show_info_bar(SpiceUsbDeviceWidget *self,
     hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     spice_compat_box_pack_start(GTK_BOX(content_area), hbox, TRUE, TRUE, 0);
 
-    widget = gtk_image_new_from_icon_name(stock_icon_id,
+    widget = spice_compat_image_new_from_icon_name(stock_icon_id,
                                           GTK_ICON_SIZE_SMALL_TOOLBAR);
     spice_compat_box_pack_start(GTK_BOX(hbox), widget, FALSE, FALSE, 0);
 
@@ -195,18 +195,66 @@ spice_usb_device_widget_show_info_bar(SpiceUsbDeviceWidget *self,
     spice_compat_widget_show(priv->info_bar);
 }
 
+#if GTK_CHECK_VERSION(4, 0, 0)
+static void
+empty_cd_file_dialog_cb(GtkFileDialog *dialog, GAsyncResult *result,
+                        gpointer user_data)
+{
+    SpiceUsbDeviceWidget *self = SPICE_USB_DEVICE_WIDGET(user_data);
+    SpiceUsbDeviceWidgetPrivate *priv = self->priv;
+    GFile *file;
+    GError *err = NULL;
+
+    file = gtk_file_dialog_open_finish(dialog, result, &err);
+    if (file == NULL) {
+        /* User cancelled or error */
+        g_clear_error(&err);
+        return;
+    }
+
+    gchar *filename = g_file_get_path(file);
+    g_object_unref(file);
+
+    gboolean rc = spice_usb_device_manager_create_shared_cd_device(priv->manager, filename, &err);
+    if (!rc && err != NULL) {
+        const gchar *basename = g_path_get_basename(filename);
+        gchar *err_msg = g_strdup_printf(_("shared CD %s, %s"),
+                                         basename, err->message);
+        g_free((gpointer)basename);
+
+        SPICE_DEBUG("Failed to create %s", err_msg);
+        spice_usb_device_widget_add_err_msg(self, err_msg);
+        spice_usb_device_widget_update_status(self);
+
+        g_clear_error(&err);
+    }
+    g_free(filename);
+}
+#endif
+
 static void
 empty_cd_clicked_cb(GtkToggleButton *toggle, gpointer user_data)
 {
     SpiceUsbDeviceWidget *self = SPICE_USB_DEVICE_WIDGET(user_data);
     SpiceUsbDeviceWidgetPrivate *priv = self->priv;
-    GtkWidget *dialog;
-    gint dialog_rc;
 
     if (!gtk_toggle_button_get_active(toggle)) {
         return;
     }
     gtk_toggle_button_set_active(toggle, FALSE);
+
+#if GTK_CHECK_VERSION(4, 0, 0)
+    GtkFileDialog *dialog = gtk_file_dialog_new();
+    gtk_file_dialog_set_title(dialog, _("Select ISO file or device"));
+    gtk_file_dialog_open(dialog,
+                         GTK_WINDOW(gtk_widget_get_ancestor(GTK_WIDGET(self), GTK_TYPE_WINDOW)),
+                         NULL, /* GCancellable */
+                         (GAsyncReadyCallback)empty_cd_file_dialog_cb,
+                         self);
+    g_object_unref(dialog);
+#else
+    GtkWidget *dialog;
+    gint dialog_rc;
 
     dialog = gtk_file_chooser_dialog_new(_("Select ISO file or device"),
                                          GTK_WINDOW(gtk_widget_get_ancestor(GTK_WIDGET(self), GTK_TYPE_WINDOW)),
@@ -236,6 +284,7 @@ empty_cd_clicked_cb(GtkToggleButton *toggle, gpointer user_data)
         }
     }
     gtk_widget_destroy(dialog);
+#endif
 }
 
 static void spice_usb_device_widget_add_empty_cd(SpiceUsbDeviceWidget *self)
@@ -246,7 +295,7 @@ static void spice_usb_device_widget_add_empty_cd(SpiceUsbDeviceWidget *self)
     empty_cd = gtk_check_button_new();
     cd_label = gtk_label_new(_("SPICE CD (empty)"));
     gtk_label_set_ellipsize(GTK_LABEL(cd_label), PANGO_ELLIPSIZE_MIDDLE);
-    gtk_container_add(GTK_CONTAINER(empty_cd), cd_label);
+    spice_compat_check_button_set_child(GTK_CHECK_BUTTON(empty_cd), cd_label);
     g_signal_connect(G_OBJECT(empty_cd), "toggled", G_CALLBACK(empty_cd_clicked_cb), self);
 
     gtk_widget_set_margin_start(empty_cd, 12);
@@ -482,7 +531,7 @@ static gboolean spice_usb_device_widget_update_status(gpointer user_data)
     g_free(str);
 
     priv->device_count = 0;
-    gtk_container_foreach(GTK_CONTAINER(self), check_can_redirect, self);
+    spice_compat_container_foreach(GTK_WIDGET(self), check_can_redirect, self);
 
     if (priv->err_msg) {
         spice_usb_device_widget_show_info_bar(self, priv->err_msg,
@@ -627,7 +676,7 @@ static void device_added_cb(SpiceUsbDeviceManager *manager,
     gtk_widget_set_margin_start(check, 12);
     spice_compat_box_pack_end(GTK_BOX(self), check, FALSE, FALSE, 0);
 
-    gtk_box_reorder_child(GTK_BOX(self), priv->empty_cd, -1);
+    spice_compat_box_reorder_child_to_end(GTK_BOX(self), priv->empty_cd);
 
     if (spice_usb_device_manager_is_device_shared_cd(priv->manager, device) &&
         !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(check))) {
@@ -642,7 +691,7 @@ static void device_added_cb(SpiceUsbDeviceManager *manager,
 static void destroy_widget_by_usb_device(GtkWidget *widget, gpointer user_data)
 {
     if (get_usb_device(widget) == user_data) {
-        gtk_widget_destroy(widget);
+        spice_compat_widget_destroy(widget);
     }
 }
 
@@ -652,7 +701,7 @@ static void device_removed_cb(SpiceUsbDeviceManager *manager,
 {
     SpiceUsbDeviceWidget *self = SPICE_USB_DEVICE_WIDGET(user_data);
 
-    gtk_container_foreach(GTK_CONTAINER(self),
+    spice_compat_container_foreach(GTK_WIDGET(self),
                           destroy_widget_by_usb_device, device);
 
     spice_usb_device_widget_update_status(self);
@@ -672,7 +721,7 @@ static void device_error_cb(SpiceUsbDeviceManager *manager,
 {
     SpiceUsbDeviceWidget *self = SPICE_USB_DEVICE_WIDGET(user_data);
 
-    gtk_container_foreach(GTK_CONTAINER(self),
+    spice_compat_container_foreach(GTK_WIDGET(self),
                           set_inactive_by_usb_device, device);
 
     spice_usb_device_widget_update_status(self);

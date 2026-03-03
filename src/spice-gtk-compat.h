@@ -1,27 +1,12 @@
-/*
-   Copyright (C) 2024 Red Hat, Inc.
-
-   This library is free software; you can redistribute it and/or
-   modify it under the terms of the GNU Lesser General Public
-   License as published by the Free Software Foundation; either
-   version 2.1 of the License, or (at your option) any later version.
-
-   This library is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-   Lesser General Public License for more details.
-
-   You should have received a copy of the GNU Lesser General Public
-   License along with this library; if not, see <http://www.gnu.org/licenses/>.
-*/
 #pragma once
 
 /*
- * GTK3/GTK4 compatibility macros.
+ * GTK3/GTK4 compatibility shims.
  *
- * This header provides shims so that Phase 1 (GTK 3.24) code can compile
- * against both GTK 3 and GTK 4.  Each section documents the API change
- * and the chosen compatibility strategy.
+ * Inline functions and macros that abstract API differences between
+ * GTK 3.24 and GTK 4.x so the same source files compile cleanly
+ * against either version.  Each numbered section documents the
+ * specific API change and the chosen compatibility strategy.
  *
  * Include this header AFTER gtk/gtk.h (or gdk/gdk.h) and config.h.
  */
@@ -833,3 +818,240 @@ spice_compat_display_get_primary_monitor(GdkDisplay *display)
     return gdk_display_get_primary_monitor(display);
 #endif
 }
+
+/* ------------------------------------------------------------------ */
+/* 31. gdk_display_get_monitor_at_point() — removed in GTK4           */
+/*                                                                    */
+/* GTK 3: gdk_display_get_monitor_at_point(display, x, y)            */
+/* GTK 4: Removed. Iterate the GListModel of monitors and check      */
+/*         which monitor's geometry contains the point.               */
+/* ------------------------------------------------------------------ */
+static inline GdkMonitor *
+spice_compat_display_get_monitor_at_point(GdkDisplay *display, int x, int y)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    GListModel *monitors = gdk_display_get_monitors(display);
+    guint n = g_list_model_get_n_items(monitors);
+    for (guint i = 0; i < n; i++) {
+        GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
+        GdkRectangle geom;
+        gdk_monitor_get_geometry(mon, &geom);
+        if (x >= geom.x && x < geom.x + geom.width &&
+            y >= geom.y && y < geom.y + geom.height) {
+            g_object_unref(mon);
+            return GDK_MONITOR(g_list_model_get_item(monitors, i));
+        }
+        g_object_unref(mon);
+    }
+    /* Fallback: return the first monitor */
+    if (n > 0)
+        return GDK_MONITOR(g_list_model_get_item(monitors, 0));
+    return NULL;
+#else
+    return gdk_display_get_monitor_at_point(display, x, y);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 32. gtk_grab_remove() — removed in GTK4                            */
+/*                                                                    */
+/* GTK 3: gtk_grab_remove(widget) releases a GTK grab.               */
+/* GTK 4: The GTK grab concept is gone; input is managed by event     */
+/*         controllers. Make this a no-op.                            */
+/* ------------------------------------------------------------------ */
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #define spice_compat_gtk_grab_remove(widget)  ((void)0)
+#else
+  #define spice_compat_gtk_grab_remove(widget)  gtk_grab_remove(widget)
+#endif
+
+/* ------------------------------------------------------------------ */
+/* 33. gtk_widget_get_has_window() — removed in GTK4                  */
+/*                                                                    */
+/* GTK 3: Returns whether the widget has its own GdkWindow.          */
+/* GTK 4: All widgets are backed by a GdkSurface (conceptually), so  */
+/*         this always returns TRUE. The function was removed.        */
+/* ------------------------------------------------------------------ */
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #define spice_compat_widget_get_has_window(widget)  (TRUE)
+#else
+  #define spice_compat_widget_get_has_window(widget)  \
+      gtk_widget_get_has_window(widget)
+#endif
+
+/* ------------------------------------------------------------------ */
+/* 34. gdk_cairo_region() — removed in GTK4                           */
+/*                                                                    */
+/* GTK 3: gdk_cairo_region(cr, region) adds region to cairo clip.    */
+/* GTK 4: Removed. Manually iterate rectangles and add them to the   */
+/*         cairo path.                                                */
+/* ------------------------------------------------------------------ */
+static inline void
+spice_compat_cairo_region(cairo_t *cr, const cairo_region_t *region)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    int n = cairo_region_num_rectangles(region);
+    for (int i = 0; i < n; i++) {
+        cairo_rectangle_int_t rect;
+        cairo_region_get_rectangle(region, i, &rect);
+        cairo_rectangle(cr, rect.x, rect.y, rect.width, rect.height);
+    }
+#else
+    gdk_cairo_region(cr, region);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 35. gtk_widget_destroy() — removed in GTK4                         */
+/*                                                                    */
+/* GTK 3: gtk_widget_destroy(widget) destroys a widget.              */
+/* GTK 4: Use gtk_widget_unparent() to remove from parent (which     */
+/*         triggers destruction if the parent held the last ref).     */
+/*                                                                    */
+/* For g_clear_pointer(&ptr, gtk_widget_destroy) patterns, callers   */
+/* should use spice_compat_clear_widget(&ptr) instead.               */
+/* ------------------------------------------------------------------ */
+static inline void
+spice_compat_widget_destroy(GtkWidget *widget)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_widget_unparent(widget);
+#else
+    gtk_widget_destroy(widget);
+#endif
+}
+
+static inline void
+spice_compat_clear_widget(GtkWidget **widget_ptr)
+{
+    if (*widget_ptr != NULL) {
+        spice_compat_widget_destroy(*widget_ptr);
+        *widget_ptr = NULL;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* 36. GTK_ICON_SIZE_SMALL_TOOLBAR — removed in GTK4                  */
+/*                                                                    */
+/* GTK 3: GtkIconSize enum with GTK_ICON_SIZE_SMALL_TOOLBAR, etc.    */
+/* GTK 4: Icon size enums removed. gtk_image_new_from_icon_name()    */
+/*         takes only the icon name (no size parameter).              */
+/*                                                                    */
+/* We define the constant as 0 for GTK4 so existing call sites still */
+/* compile, and provide a wrapper that ignores the size in GTK4.     */
+/* ------------------------------------------------------------------ */
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #define GTK_ICON_SIZE_SMALL_TOOLBAR  0
+#endif
+
+static inline GtkWidget *
+spice_compat_image_new_from_icon_name(const gchar *icon_name,
+                                      gint icon_size G_GNUC_UNUSED)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    return gtk_image_new_from_icon_name(icon_name);
+#else
+    return gtk_image_new_from_icon_name(icon_name, icon_size);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 37. gtk_container_add() for non-Box containers — removed in GTK4   */
+/*                                                                    */
+/* GTK 3: gtk_container_add(GTK_CONTAINER(parent), child)            */
+/* GTK 4: Container-specific methods:                                 */
+/*         GtkCheckButton → gtk_check_button_set_child()             */
+/*         Generic fallback → gtk_widget_set_parent() (but usually   */
+/*         each widget has its own add method in GTK4).               */
+/*                                                                    */
+/* For the GtkCheckButton case used in usb-device-widget.c:          */
+/* ------------------------------------------------------------------ */
+static inline void
+spice_compat_check_button_set_child(GtkCheckButton *button, GtkWidget *child)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_check_button_set_child(button, child);
+#else
+    gtk_container_add(GTK_CONTAINER(button), child);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 38. gtk_container_foreach() — removed in GTK4                      */
+/*                                                                    */
+/* GTK 3: gtk_container_foreach(container, callback, data)           */
+/* GTK 4: Iterate with gtk_widget_get_first_child() /                */
+/*         gtk_widget_get_next_sibling().                              */
+/*                                                                    */
+/* Note: We collect children into a list first to allow the callback  */
+/* to safely remove/destroy widgets during iteration.                 */
+/* ------------------------------------------------------------------ */
+static inline void
+spice_compat_container_foreach(GtkWidget *container,
+                               GtkCallback callback,
+                               gpointer callback_data)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    GList *children = NULL;
+    GtkWidget *child;
+
+    /* Collect children first so callback can safely modify the tree */
+    for (child = gtk_widget_get_first_child(container);
+         child != NULL;
+         child = gtk_widget_get_next_sibling(child)) {
+        children = g_list_prepend(children, child);
+    }
+    children = g_list_reverse(children);
+
+    for (GList *l = children; l != NULL; l = l->next) {
+        callback(GTK_WIDGET(l->data), callback_data);
+    }
+    g_list_free(children);
+#else
+    gtk_container_foreach(GTK_CONTAINER(container), callback, callback_data);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 39. gtk_box_reorder_child() — removed in GTK4                      */
+/*                                                                    */
+/* GTK 3: gtk_box_reorder_child(box, child, position)                */
+/*         position -1 means "move to end".                           */
+/* GTK 4: Use gtk_box_reorder_child_after(box, child, sibling).      */
+/*         sibling=NULL means "move to start". To move to end, pass  */
+/*         the last child as sibling.                                 */
+/*                                                                    */
+/* We only need the "move to end" case (position == -1).             */
+/* ------------------------------------------------------------------ */
+static inline void
+spice_compat_box_reorder_child_to_end(GtkBox *box, GtkWidget *child)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* Find the last child of the box */
+    GtkWidget *last = NULL;
+    GtkWidget *iter;
+    for (iter = gtk_widget_get_first_child(GTK_WIDGET(box));
+         iter != NULL;
+         iter = gtk_widget_get_next_sibling(iter)) {
+        last = iter;
+    }
+    /* If child is already last, nothing to do */
+    if (last != child) {
+        gtk_box_reorder_child_after(box, child, last);
+    }
+#else
+    gtk_box_reorder_child(box, child, -1);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 40. gtk_dialog_run() + gtk_file_chooser_get_filename() — GTK4      */
+/*                                                                    */
+/* GTK 3: Synchronous gtk_dialog_run() + get_filename().             */
+/* GTK 4: Dialogs are async-only, GtkFileChooserDialog removed.      */
+/*         Use GtkFileDialog with async API.                          */
+/*                                                                    */
+/* These changes are too structural for a simple shim — callers use   */
+/* #if GTK_CHECK_VERSION(4,0,0) blocks directly in the source.       */
+/* No shim provided here; documented for completeness.               */
+/* ------------------------------------------------------------------ */
