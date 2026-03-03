@@ -674,7 +674,7 @@ static void spice_display_init(SpiceDisplay *display)
 
     d = display->priv = spice_display_get_instance_private(display);
     d->stack = GTK_STACK(gtk_stack_new());
-    gtk_container_add(GTK_CONTAINER(display), GTK_WIDGET(d->stack));
+    gtk_box_pack_start(GTK_BOX(display), GTK_WIDGET(d->stack), TRUE, TRUE, 0);
     area = gtk_drawing_area_new();
 
     g_object_connect(area,
@@ -705,14 +705,7 @@ static void spice_display_init(SpiceDisplay *display)
     gtk_label_set_selectable(GTK_LABEL(d->label), true);
     gtk_stack_add_named(d->stack, d->label, "label");
 
-    gtk_widget_show(GTK_WIDGET(d->stack));
-    gtk_widget_show(d->label);
-    {
-        GList *children = gtk_container_get_children(GTK_CONTAINER(d->stack));
-        for (GList *l = children; l != NULL; l = l->next)
-            gtk_widget_show(GTK_WIDGET(l->data));
-        g_list_free(children);
-    }
+    gtk_widget_show_all(GTK_WIDGET(d->stack));
     gtk_widget_show(widget);
 
     g_signal_connect(display, "grab-broken-event", G_CALLBACK(grab_broken), NULL);
