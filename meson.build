@@ -141,7 +141,7 @@ endforeach
 
 # gtk
 spice_gtk_has_gtk = false
-gtk_version_required = '3.22'
+gtk_version_required = '3.24'
 d = dependency('gtk+-3.0', version : '>= @0@'.format(gtk_version_required),
                required: get_option('gtk'))
 summary_info += {'gtk': d.found()}
