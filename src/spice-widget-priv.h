@@ -43,12 +43,12 @@ G_BEGIN_DECLS
 typedef struct _SpiceDisplayPrivate SpiceDisplayPrivate;
 
 struct _SpiceDisplay {
-    GtkEventBox parent;
+    GtkBox parent;
     SpiceDisplayPrivate *priv;
 };
 
 struct _SpiceDisplayClass {
-    GtkEventBoxClass parent_class;
+    GtkBoxClass parent_class;
 
     /* signals */
     void (*mouse_grab)(SpiceChannel *channel, gint grabbed);
