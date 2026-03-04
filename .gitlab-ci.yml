@@ -49,21 +49,7 @@ fedora:
     - ninja -C build-feat-disabled
     - ninja -C build-feat-disabled test
 
-fedora-gtk4:
-  artifacts:
-    paths:
-      - build-*/meson-logs/*.txt
-    when: always
-    expire_in: 1 week
-
-  before_script:
-    - dnf install -y $DEPS_COMMON $DEPS_FEDORA
-    - git clone ${CI_REPOSITORY_URL/spice-gtk/spice-protocol}
-    - meson setup --buildtype=release spice-protocol build-spice-protocol --prefix=/usr --werror
-    - ninja -C build-spice-protocol install
-
-  script:
-    - meson setup --buildtype=release build-gtk4 -Dgtk_version=4 --werror
+    - meson setup --buildtype=release build-gtk4 -Dgtk4=enabled --werror
     - ninja -C build-gtk4
     - ninja -C build-gtk4 test
 

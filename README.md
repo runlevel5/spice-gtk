@@ -16,17 +16,21 @@ Project content
     * SpiceAudio (see spice-audio.h).
     * Various Spice\<Type\>Channel (see channel-\<type\>.h).
 
-* **libspice-client-gtk-3.0** (GTK3) / **libspice-client-gtk-4.0** (GTK4)
+* **libspice-client-gtk-3.0**
 
-    Provides a GTK widget to show spice display and accept user input.
-    Build one or the other by setting `-Dgtk_version=3` (default) or
-    `-Dgtk_version=4`.
+    Provides a GTK 3 widget to show spice display and accept user input.
     * SpiceDisplay (see spice-widget.h)
+
+* **libspice-client-gtk-4.0** *(optional)*
+
+    Provides a GTK 4 widget with the same API surface, built from
+    native GTK 4 code in `src/gtk4/`.  Enable with `-Dgtk4=enabled`.
+    Can be built alongside the GTK 3 library.
 
 * **spicy**
 
-   A GTK3 test client (not built when `-Dgtk_version=4`).
-   The recommended client for end users is [virt-viewer]
+   A GTK 3 test client. The recommended client for end user is
+   [virt-viewer]
 
 * **spicy-screenshot**
 
@@ -42,6 +46,22 @@ Project content
 
 [virt-viewer]: https://pagure.io/virt-viewer
 
+Building
+--------
+
+Basic build (GTK 3 client library):
+
+    meson setup build
+    ninja -C build
+
+GTK 4 client library (can be combined with the default GTK 3 build):
+
+    meson setup build -Dgtk4=enabled
+
+GTK 4 only (no GTK 3):
+
+    meson setup build -Dgtk=disabled -Dgtk4=enabled
+
 Build dependencies:
 ------------------
 
@@ -51,18 +71,16 @@ Build dependencies:
     dnf builddep spice-gtk
 >>>
 
-* or install (for GTK3):
+For GTK 4 support, also install:
+
+>>>
+    dnf install gtk4-devel
+>>>
+
+* or install:
 
 >>>
     meson ninja gtk3-devel spice-protocol openssl-devel pulseaudio-libs-devel pixman-devel
-    gobject-introspection-devel libjpeg-turbo-devel zlib-devel cyrus-sasl-devel gtk-doc
-    gettext-devel vala vala-tools python3 python3-pyparsing
->>>
-
-* For GTK4, replace `gtk3-devel` with `gtk4-devel`:
-
->>>
-    meson ninja gtk4-devel spice-protocol openssl-devel pulseaudio-libs-devel pixman-devel
     gobject-introspection-devel libjpeg-turbo-devel zlib-devel cyrus-sasl-devel gtk-doc
     gettext-devel vala vala-tools python3 python3-pyparsing
 >>>
@@ -71,12 +89,4 @@ The GStreamer backend needs:
 
 >>>
     gstreamer1-devel gstreamer1-plugins-base-devel gstreamer1-plugins-good gstreamer1-plugins-bad-free
->>>
-
-Building with GTK4
-------------------
-
->>>
-    meson setup builddir-gtk4 -Dgtk_version=4
-    ninja -C builddir-gtk4
 >>>
