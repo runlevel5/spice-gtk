@@ -144,10 +144,9 @@ static void update_mouse_cursor(SpiceDisplay *display);
 static void update_area(SpiceDisplay *display, gint x, gint y, gint width, gint height);
 static void release_keys(SpiceDisplay *display);
 #if GTK_CHECK_VERSION(4, 0, 0)
-static void size_allocate(GtkWidget *widget, int width, int height, gpointer data);
+static void size_allocate(GtkWidget *widget, int width, int height, int baseline);
 static void draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data);
 static void gst_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data);
-static void gst_size_allocate(GtkWidget *widget, int width, int height, gpointer data);
 #else
 static void size_allocate(GtkWidget *widget, GtkAllocation *conf, gpointer data);
 static gboolean draw_event(GtkWidget *widget, cairo_t *cr, gpointer data);
@@ -778,8 +777,8 @@ static void spice_display_init(SpiceDisplay *display)
     gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), gst_draw_func, display, NULL);
 #else
     g_signal_connect(area, "draw", G_CALLBACK(gst_draw_event), display);
-#endif
     g_signal_connect(area, "size-allocate", G_CALLBACK(gst_size_allocate), display);
+#endif
 
     d->label = gtk_label_new(NULL);
     gtk_label_set_selectable(GTK_LABEL(d->label), true);
@@ -805,7 +804,9 @@ static void spice_display_init(SpiceDisplay *display)
     g_signal_connect(display, "drag-data-received",
                      G_CALLBACK(drag_data_received_callback), NULL);
 #endif
+#if !GTK_CHECK_VERSION(4, 0, 0)
     g_signal_connect(display, "size-allocate", G_CALLBACK(size_allocate), NULL);
+#endif
 
     spice_compat_widget_add_events(widget,
                            GDK_POINTER_MOTION_MASK |
@@ -2552,9 +2553,10 @@ static void size_allocate_impl(SpiceDisplay *display, gint x, gint y, gint width
 }
 
 #if GTK_CHECK_VERSION(4, 0, 0)
-/* GTK4: size-allocate signal provides width and height directly */
-static void size_allocate(GtkWidget *widget, int width, int height, gpointer data)
+/* GTK4: override GtkWidgetClass.size_allocate vfunc */
+static void size_allocate(GtkWidget *widget, int width, int height, int baseline)
 {
+    GTK_WIDGET_CLASS(spice_display_parent_class)->size_allocate(widget, width, height, baseline);
     size_allocate_impl(SPICE_DISPLAY(widget), 0, 0, width, height);
 }
 #else
@@ -2615,6 +2617,9 @@ static void spice_display_class_init(SpiceDisplayClass *klass)
      * since they are widget lifecycle hooks, not event handlers. */
     gtkwidget_class->realize = realize;
     gtkwidget_class->unrealize = unrealize;
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtkwidget_class->size_allocate = size_allocate;
+#endif
 
     gobject_class->constructed = spice_display_constructed;
     gobject_class->dispose = spice_display_dispose;
@@ -3103,6 +3108,8 @@ static void gst_sync_bus_call(GstBus *bus, GstMessage *msg, SpiceDisplay *displa
 }
 #endif
 
+static void gst_size_allocate_impl(SpiceDisplay *display, GtkWidget *widget,
+                                   gint x, gint y, gint width, gint height);
 static gboolean gst_draw_event_impl(SpiceDisplay *display)
 {
     SpiceDisplayPrivate *d = display->priv;
@@ -3121,6 +3128,10 @@ static gboolean gst_draw_event_impl(SpiceDisplay *display)
 static void gst_draw_func(GtkDrawingArea *area, cairo_t *cr,
                             int width, int height, gpointer data)
 {
+    /* In GTK4, size-allocate is not a signal on GtkDrawingArea,
+       so update the GStreamer overlay rectangle here instead */
+    gst_size_allocate_impl(SPICE_DISPLAY(data), GTK_WIDGET(area),
+                           0, 0, width, height);
     gst_draw_event_impl(SPICE_DISPLAY(data));
 }
 #else
@@ -3145,13 +3156,7 @@ static void gst_size_allocate_impl(SpiceDisplay *display, GtkWidget *widget,
     }
 }
 
-#if GTK_CHECK_VERSION(4, 0, 0)
-/* GTK4: size-allocate signal provides width and height directly */
-static void gst_size_allocate(GtkWidget *widget, int width, int height, gpointer data)
-{
-    gst_size_allocate_impl(SPICE_DISPLAY(data), widget, 0, 0, width, height);
-}
-#else
+#if !GTK_CHECK_VERSION(4, 0, 0)
 static void gst_size_allocate(GtkWidget *widget, GdkRectangle *a, gpointer data)
 {
     gst_size_allocate_impl(SPICE_DISPLAY(data), widget, a->x, a->y, a->width, a->height);
