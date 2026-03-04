@@ -143,12 +143,19 @@ static bool egl_enabled(SpiceDisplayPrivate *d);
 static void update_mouse_cursor(SpiceDisplay *display);
 static void update_area(SpiceDisplay *display, gint x, gint y, gint width, gint height);
 static void release_keys(SpiceDisplay *display);
+#if GTK_CHECK_VERSION(4, 0, 0)
+static void size_allocate(GtkWidget *widget, int width, int height, gpointer data);
+static void draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data);
+static void gst_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data);
+static void gst_size_allocate(GtkWidget *widget, int width, int height, gpointer data);
+#else
 static void size_allocate(GtkWidget *widget, GtkAllocation *conf, gpointer data);
 static gboolean draw_event(GtkWidget *widget, cairo_t *cr, gpointer data);
+static gboolean gst_draw_event(GtkWidget *widget, cairo_t *cr, gpointer data);
+static void gst_size_allocate(GtkWidget *widget, GdkRectangle *a, gpointer data);
+#endif
 static void update_size_request(SpiceDisplay *display);
 static GdkDevice *spice_gdk_window_get_pointing_device(SpiceCompatSurface *surface);
-static void gst_size_allocate(GtkWidget *widget, GdkRectangle *a, gpointer data);
-static gboolean gst_draw_event(GtkWidget *widget, cairo_t *cr, gpointer data);
 
 /* Event controller callbacks (GTK 3.24+) */
 static gboolean key_pressed_cb(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer user_data);
@@ -737,10 +744,15 @@ static void spice_display_init(SpiceDisplay *display)
     spice_compat_box_pack_start(GTK_BOX(display), GTK_WIDGET(d->stack), TRUE, TRUE, 0);
     area = gtk_drawing_area_new();
 
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), draw_func, display, NULL);
+    g_signal_connect(area, "realize", G_CALLBACK(drawing_area_realize), display);
+#else
     g_object_connect(area,
                      "signal::draw", draw_event, display,
                      "signal::realize", drawing_area_realize, display,
                      NULL);
+#endif
     gtk_stack_add_named(d->stack, area, "draw-area");
     gtk_stack_set_visible_child(d->stack, area);
 
@@ -756,10 +768,12 @@ static void spice_display_init(SpiceDisplay *display)
 #endif
     area = gtk_drawing_area_new();
     gtk_stack_add_named(d->stack, area, "gst-area");
-    g_object_connect(area,
-                     "signal::draw", gst_draw_event, display,
-                     "signal::size-allocate", gst_size_allocate, display,
-                     NULL);
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), gst_draw_func, display, NULL);
+#else
+    g_signal_connect(area, "draw", G_CALLBACK(gst_draw_event), display);
+#endif
+    g_signal_connect(area, "size-allocate", G_CALLBACK(gst_size_allocate), display);
 
     d->label = gtk_label_new(NULL);
     gtk_label_set_selectable(GTK_LABEL(d->label), true);
@@ -1621,9 +1635,8 @@ static void set_egl_enabled(SpiceDisplay *display, bool enabled)
 }
 #endif
 
-static gboolean draw_event(GtkWidget *widget, cairo_t *cr, gpointer data)
+static gboolean draw_event_impl(SpiceDisplay *display, cairo_t *cr)
 {
-    SpiceDisplay *display = SPICE_DISPLAY(data);
     SpiceDisplayPrivate *d = display->priv;
     g_return_val_if_fail(d != NULL, false);
 
@@ -1644,6 +1657,19 @@ static gboolean draw_event(GtkWidget *widget, cairo_t *cr, gpointer data)
 
     return true;
 }
+
+#if GTK_CHECK_VERSION(4, 0, 0)
+static void draw_func(GtkDrawingArea *area, cairo_t *cr,
+                       int width, int height, gpointer data)
+{
+    draw_event_impl(SPICE_DISPLAY(data), cr);
+}
+#else
+static gboolean draw_event(GtkWidget *widget, cairo_t *cr, gpointer data)
+{
+    return draw_event_impl(SPICE_DISPLAY(data), cr);
+}
+#endif
 
 /* ---------------------------------------------------------------- */
 typedef enum {
@@ -2485,30 +2511,29 @@ static void button_released_cb(SpiceCompat_GestureButton *gesture,
                     GTK_EVENT_CONTROLLER(gesture));
 }
 
-static void size_allocate(GtkWidget *widget, GtkAllocation *conf, gpointer data)
+static void size_allocate_impl(SpiceDisplay *display, gint x, gint y, gint width, gint height)
 {
-    SpiceDisplay *display = SPICE_DISPLAY(widget);
     SpiceDisplayPrivate *d = display->priv;
 
-    if (conf->width == d->ww && conf->height == d->wh &&
-            conf->x == d->mx && conf->y == d->my) {
+    if (width == d->ww && height == d->wh &&
+            x == d->mx && y == d->my) {
         return;
     }
 
-    if (conf->width != d->ww  || conf->height != d->wh) {
-        d->ww = conf->width;
-        d->wh = conf->height;
-        recalc_geometry(widget);
+    if (width != d->ww  || height != d->wh) {
+        d->ww = width;
+        d->wh = height;
+        recalc_geometry(GTK_WIDGET(display));
 #ifdef HAVE_EGL
         if (egl_enabled(d)) {
-            gint scale_factor = gtk_widget_get_scale_factor(widget);
-            spice_egl_resize_display(display, conf->width * scale_factor, conf->height * scale_factor);
+            gint scale_factor = gtk_widget_get_scale_factor(GTK_WIDGET(display));
+            spice_egl_resize_display(display, width * scale_factor, height * scale_factor);
         }
 #endif
     }
 
-    d->mx = conf->x;
-    d->my = conf->y;
+    d->mx = x;
+    d->my = y;
 
     update_mouse_cursor(display);
 
@@ -2519,6 +2544,19 @@ static void size_allocate(GtkWidget *widget, GtkAllocation *conf, gpointer data)
     }
 #endif
 }
+
+#if GTK_CHECK_VERSION(4, 0, 0)
+/* GTK4: size-allocate signal provides width and height directly */
+static void size_allocate(GtkWidget *widget, int width, int height, gpointer data)
+{
+    size_allocate_impl(SPICE_DISPLAY(widget), 0, 0, width, height);
+}
+#else
+static void size_allocate(GtkWidget *widget, GtkAllocation *conf, gpointer data)
+{
+    size_allocate_impl(SPICE_DISPLAY(widget), conf->x, conf->y, conf->width, conf->height);
+}
+#endif
 
 static void update_image(SpiceDisplay *display)
 {
@@ -3054,9 +3092,8 @@ static void gst_sync_bus_call(GstBus *bus, GstMessage *msg, SpiceDisplay *displa
 }
 #endif
 
-static gboolean gst_draw_event(GtkWidget *widget, cairo_t *cr, gpointer data)
+static gboolean gst_draw_event_impl(SpiceDisplay *display)
 {
-    SpiceDisplay *display = SPICE_DISPLAY(data);
     SpiceDisplayPrivate *d = display->priv;
     GstVideoOverlay *overlay = g_weak_ref_get(&d->overlay_weak_ref);
 
@@ -3069,20 +3106,46 @@ static gboolean gst_draw_event(GtkWidget *widget, cairo_t *cr, gpointer data)
     return false;
 }
 
-static void gst_size_allocate(GtkWidget *widget, GdkRectangle *a, gpointer data)
+#if GTK_CHECK_VERSION(4, 0, 0)
+static void gst_draw_func(GtkDrawingArea *area, cairo_t *cr,
+                            int width, int height, gpointer data)
 {
-    SpiceDisplay *display = SPICE_DISPLAY(data);
+    gst_draw_event_impl(SPICE_DISPLAY(data));
+}
+#else
+static gboolean gst_draw_event(GtkWidget *widget, cairo_t *cr, gpointer data)
+{
+    return gst_draw_event_impl(SPICE_DISPLAY(data));
+}
+#endif
+
+static void gst_size_allocate_impl(SpiceDisplay *display, GtkWidget *widget,
+                                   gint x, gint y, gint width, gint height)
+{
     SpiceDisplayPrivate *d = display->priv;
     GstVideoOverlay *overlay = g_weak_ref_get(&d->overlay_weak_ref);
 
     if (overlay) {
         gint scale = gtk_widget_get_scale_factor(widget);
 
-        gst_video_overlay_set_render_rectangle(overlay, a->x * scale, a->y * scale,
-                                               a->width * scale, a->height * scale);
+        gst_video_overlay_set_render_rectangle(overlay, x * scale, y * scale,
+                                               width * scale, height * scale);
         gst_object_unref(overlay);
     }
 }
+
+#if GTK_CHECK_VERSION(4, 0, 0)
+/* GTK4: size-allocate signal provides width and height directly */
+static void gst_size_allocate(GtkWidget *widget, int width, int height, gpointer data)
+{
+    gst_size_allocate_impl(SPICE_DISPLAY(data), widget, 0, 0, width, height);
+}
+#else
+static void gst_size_allocate(GtkWidget *widget, GdkRectangle *a, gpointer data)
+{
+    gst_size_allocate_impl(SPICE_DISPLAY(data), widget, a->x, a->y, a->width, a->height);
+}
+#endif
 
 /* This callback should pass to the widget a pointer of the pipeline
  * so that we can the set GST pipeline and overlay related calls from
