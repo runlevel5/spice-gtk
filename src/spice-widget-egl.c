@@ -27,13 +27,25 @@
 #include "spice-gtk-session-priv.h"
 
 #ifdef GDK_WINDOWING_X11
+#ifdef HAVE_GTK_4
+#include <gdk/x11/gdkx.h>
+#else
 #include <gdk/gdkx.h>
 #endif
+#endif
 #ifdef GDK_WINDOWING_WAYLAND
+#ifdef HAVE_GTK_4
+#include <gdk/wayland/gdkwayland.h>
+#else
 #include <gdk/gdkwayland.h>
 #endif
+#endif
 #ifdef GDK_WINDOWING_WIN32
+#ifdef HAVE_GTK_4
+#include <gdk/win32/gdkwin32.h>
+#else
 #include <gdk/gdkwin32.h>
+#endif
 #endif
 
 #define VERTS_ARRAY_SIZE (sizeof(GLfloat) * 4 * 4)

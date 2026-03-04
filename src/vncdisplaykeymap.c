@@ -58,7 +58,11 @@ static struct {
 static unsigned int ref_count_for_untranslated_keys = 0;
 
 #ifdef GDK_WINDOWING_WAYLAND
+#ifdef HAVE_GTK_4
+#include <gdk/wayland/gdkwayland.h>
+#else
 #include <gdk/gdkwayland.h>
+#endif
 #endif
 
 #ifdef GDK_WINDOWING_BROADWAY
@@ -71,7 +75,11 @@ static unsigned int ref_count_for_untranslated_keys = 0;
 #endif
 
 #ifdef GDK_WINDOWING_X11
+#ifdef HAVE_GTK_4
+#include <gdk/x11/gdkx.h>
+#else
 #include <gdk/gdkx.h>
+#endif
 #include <X11/XKBlib.h>
 #include <stdbool.h>
 #include <string.h>
@@ -86,7 +94,11 @@ static unsigned int ref_count_for_untranslated_keys = 0;
 #endif
 
 #ifdef GDK_WINDOWING_WIN32
+#ifdef HAVE_GTK_4
+#include <gdk/win32/gdkwin32.h>
+#else
 #include <gdk/gdkwin32.h>
+#endif
 
 /* Win32 native virtual keycodes */
 #include "vncdisplaykeymap_win322xtkbd.h"

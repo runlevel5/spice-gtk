@@ -26,13 +26,21 @@
 #endif
 #ifdef GDK_WINDOWING_X11
 #include <X11/Xlib.h>
+#ifdef HAVE_GTK_4
+#include <gdk/x11/gdkx.h>
+#else
 #include <gdk/gdkx.h>
+#endif
 #ifdef HAVE_LIBVA
 #include <va/va_x11.h>
 #endif
 #endif
 #ifdef GDK_WINDOWING_WAYLAND
+#ifdef HAVE_GTK_4
+#include <gdk/wayland/gdkwayland.h>
+#else
 #include <gdk/gdkwayland.h>
+#endif
 #ifdef HAVE_WAYLAND_PROTOCOLS
 #include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "relative-pointer-unstable-v1-client-protocol.h"
@@ -44,7 +52,11 @@
 #include <windows.h>
 #include <dinput.h>
 #include <ime.h>
+#ifdef HAVE_GTK_4
+#include <gdk/win32/gdkwin32.h>
+#else
 #include <gdk/gdkwin32.h>
+#endif
 #ifndef MAPVK_VK_TO_VSC /* may be undefined in older mingw-headers */
 #define MAPVK_VK_TO_VSC 0
 #endif
@@ -523,6 +535,7 @@ static GdkCursor* spice_display_get_blank_cursor(SpiceDisplay *display)
     return gdk_cursor_new_from_name(gdk_display, cursor_name);
 }
 
+#if !GTK_CHECK_VERSION(4, 0, 0)
 static gboolean grab_broken(SpiceDisplay *self, GdkEventGrabBroken *event,
                             gpointer user_data G_GNUC_UNUSED)
 {
@@ -550,6 +563,7 @@ static gboolean grab_broken(SpiceDisplay *self, GdkEventGrabBroken *event,
 
     return false;
 }
+#endif
 
 static void file_transfer_callback(GObject *source_object,
                                    GAsyncResult *result,
@@ -710,8 +724,8 @@ static void spice_display_init(SpiceDisplay *display)
     spice_compat_widget_show_all(GTK_WIDGET(d->stack));
     spice_compat_widget_show(widget);
 
-    g_signal_connect(display, "grab-broken-event", G_CALLBACK(grab_broken), NULL);
 #if !GTK_CHECK_VERSION(4, 0, 0)
+    g_signal_connect(display, "grab-broken-event", G_CALLBACK(grab_broken), NULL);
     g_signal_connect(display, "grab-notify", G_CALLBACK(grab_notify), NULL);
 #endif
 
@@ -899,12 +913,6 @@ SpiceGrabSequence *spice_display_get_grab_keys(SpiceDisplay *display)
     return d->grabseq;
 }
 
-static GdkSeat *spice_display_get_default_seat(SpiceDisplay *display)
-{
-    SpiceCompatSurface *surface = spice_compat_widget_get_surface(GTK_WIDGET(display));
-    GdkDisplay *gdk_display = spice_compat_surface_get_display(surface);
-    return gdk_display_get_default_seat(gdk_display);
-}
 
 /* FIXME: gdk_keyboard_grab/ungrab() is deprecated */
 G_GNUC_BEGIN_IGNORE_DEPRECATIONS
@@ -951,18 +959,20 @@ static void try_keyboard_grab(SpiceDisplay *display)
                                             GetModuleHandle(NULL), 0);
     g_warn_if_fail(d->keyboard_hook != NULL);
 #endif
-    status = gdk_seat_grab(spice_display_get_default_seat(display),
-                           spice_compat_widget_get_surface(widget),
-                           GDK_SEAT_CAPABILITY_KEYBOARD,
-                           FALSE,
-                           NULL,
-                           NULL,
-                           NULL,
-                           NULL);
+    {
+        GdkDisplay *gdk_display = gtk_widget_get_display(widget);
+        SpiceCompatSurface *surface = spice_compat_widget_get_surface(widget);
+        status = spice_compat_grab_keyboard(gdk_display, surface);
+    }
     if (status != GDK_GRAB_SUCCESS) {
         g_warning("keyboard grab failed %u", status);
         d->keyboard_grab_active = false;
     } else {
+#if GTK_CHECK_VERSION(4, 0, 0) && defined(HAVE_WAYLAND_PROTOCOLS)
+        GdkDisplay *gdk_display_kb = gtk_widget_get_display(widget);
+        if (GDK_IS_WAYLAND_DISPLAY(gdk_display_kb))
+            spice_wayland_extensions_inhibit_keyboard_shortcuts(widget);
+#endif
         d->keyboard_grab_active = true;
         g_signal_emit(widget, signals[SPICE_DISPLAY_KEYBOARD_GRAB], 0, true);
     }
@@ -970,15 +980,28 @@ static void try_keyboard_grab(SpiceDisplay *display)
 
 static void ungrab_keyboard(SpiceDisplay *display)
 {
-    GdkSeat *seat = spice_display_get_default_seat(display);
-    GdkDevice *keyboard = gdk_seat_get_keyboard(seat);
+    GdkDisplay *gdk_display = gtk_widget_get_display(GTK_WIDGET(display));
+
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* In GTK4, we can ungrab just the keyboard independently via
+     * platform-specific APIs (XUngrabKeyboard on X11, or release
+     * the keyboard shortcuts inhibitor on Wayland).  No need for
+     * the GTK3 Wayland workaround of ungrabbing all + re-grabbing pointer.
+     */
+    spice_compat_ungrab_keyboard(gdk_display);
+#ifdef HAVE_WAYLAND_PROTOCOLS
+    if (GDK_IS_WAYLAND_DISPLAY(gdk_display))
+        spice_wayland_extensions_uninhibit_keyboard_shortcuts(GTK_WIDGET(display));
+#endif
+#else
+    GdkSeat *seat = gdk_display_get_default_seat(gdk_display);
 
 #ifdef GDK_WINDOWING_WAYLAND
     /* On Wayland, use the GdkSeat API alone.
      * We simply issue a gdk_seat_ungrab() followed immediately by another
      * gdk_seat_grab() on the pointer if the pointer grab is to be kept.
      */
-    if (GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(GTK_WIDGET(display)))) {
+    if (GDK_IS_WAYLAND_DISPLAY(gdk_display)) {
         SpiceDisplayPrivate *d = display->priv;
 
         gdk_seat_ungrab(seat);
@@ -1008,8 +1031,9 @@ static void ungrab_keyboard(SpiceDisplay *display)
     G_GNUC_BEGIN_IGNORE_DEPRECATIONS
     /* we want to ungrab just the keyboard - it is not possible using gdk_seat_ungrab().
        See also https://bugzilla.gnome.org/show_bug.cgi?id=780133 */
-    gdk_device_ungrab(keyboard, GDK_CURRENT_TIME);
+    gdk_device_ungrab(gdk_seat_get_keyboard(seat), GDK_CURRENT_TIME);
     G_GNUC_END_IGNORE_DEPRECATIONS
+#endif /* GTK4 */
 }
 
 static void try_keyboard_ungrab(SpiceDisplay *display)
@@ -1184,14 +1208,10 @@ static gboolean do_pointer_grab(SpiceDisplay *display)
 #endif
 
     try_keyboard_grab(display);
-    status = gdk_seat_grab(spice_display_get_default_seat(display),
-                           surface,
-                           GDK_SEAT_CAPABILITY_ALL_POINTING,
-                           TRUE,
-                           blank,
-                           NULL,
-                           NULL,
-                           NULL);
+    {
+        GdkDisplay *gdk_display = gtk_widget_get_display(widget);
+        status = spice_compat_grab_pointer(gdk_display, surface, blank);
+    }
 
 #ifdef HAVE_WAYLAND_PROTOCOLS
     if (GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(widget))) {
@@ -1300,9 +1320,7 @@ static void mouse_warp(SpiceDisplay *display, gdouble x_root, gdouble y_root)
         /* FIXME: we try our best to ignore that next pointer move event.. */
         gdk_display_sync(gdk_display);
 
-        gdk_device_warp(spice_gdk_window_get_pointing_device(surface),
-                        gdk_window_get_screen(surface),
-                        xr, yr);
+        spice_compat_device_warp(gdk_display, xr, yr);
         d->mouse_last_x = -1;
         d->mouse_last_y = -1;
     }
@@ -1312,8 +1330,27 @@ static void mouse_warp(SpiceDisplay *display, gdouble x_root, gdouble y_root)
 
 static void ungrab_pointer(SpiceDisplay *display)
 {
-    GdkSeat *seat = spice_display_get_default_seat(display);
-    GdkDevice *pointer = gdk_seat_get_pointer(seat);
+    GdkDisplay *gdk_display = gtk_widget_get_display(GTK_WIDGET(display));
+
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* In GTK4, we can ungrab just the pointer independently via
+     * platform-specific APIs (XUngrabPointer on X11).  On Wayland,
+     * pointer unlock is done separately via wayland-extensions.
+     */
+    spice_compat_ungrab_pointer(gdk_display);
+
+#ifdef HAVE_WAYLAND_PROTOCOLS
+    if (GDK_IS_WAYLAND_DISPLAY(gdk_display)) {
+        GtkWidget *widget = GTK_WIDGET(display);
+        SpiceDisplayPrivate *d = display->priv;
+        if (d->mouse_mode == SPICE_MOUSE_MODE_SERVER) {
+            spice_wayland_extensions_disable_relative_pointer(widget);
+            spice_wayland_extensions_unlock_pointer(widget);
+        }
+    }
+#endif
+#else
+    GdkSeat *seat = gdk_display_get_default_seat(gdk_display);
 
 #ifdef GDK_WINDOWING_WAYLAND
     /* On Wayland, mixing the GdkSeat and the GdkDevice APIs leave the
@@ -1324,7 +1361,7 @@ static void ungrab_pointer(SpiceDisplay *display)
      * immediately by another gdk_seat_grab() on the keyboard if the
      * keyboard grab is to be kept.
      */
-    if (GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(GTK_WIDGET(display)))) {
+    if (GDK_IS_WAYLAND_DISPLAY(gdk_display)) {
         GtkWidget *widget = GTK_WIDGET(display);
         SpiceDisplayPrivate *d = display->priv;
 
@@ -1360,8 +1397,9 @@ static void ungrab_pointer(SpiceDisplay *display)
     G_GNUC_BEGIN_IGNORE_DEPRECATIONS
     /* we want to ungrab just the pointer - it is not possible using gdk_seat_ungrab().
        See also https://bugzilla.gnome.org/show_bug.cgi?id=780133 */
-    gdk_device_ungrab(pointer, GDK_CURRENT_TIME);
+    gdk_device_ungrab(gdk_seat_get_pointer(seat), GDK_CURRENT_TIME);
     G_GNUC_END_IGNORE_DEPRECATIONS
+#endif /* GTK4 */
 }
 
 static void try_mouse_ungrab(SpiceDisplay *display)
@@ -1388,14 +1426,12 @@ static void try_mouse_ungrab(SpiceDisplay *display)
     spice_display_get_scaling(display, &s, &x, &y, NULL, NULL);
 
     surface = spice_compat_widget_get_surface(GTK_WIDGET(display));
-    gdk_window_get_root_coords(surface,
+    spice_compat_surface_get_root_coords(surface,
                                (x + d->mouse_guest_x * s) / scale_factor,
                                (y + d->mouse_guest_y * s) / scale_factor,
                                &x, &y);
 
-    gdk_device_warp(spice_gdk_window_get_pointing_device(surface),
-                    gtk_widget_get_screen(GTK_WIDGET(display)),
-                    x, y);
+    spice_compat_device_warp(spice_compat_surface_get_display(surface), x, y);
 
     g_signal_emit(display, signals[SPICE_DISPLAY_MOUSE_GRAB], 0, false);
     spice_gtk_session_set_pointer_grabbed(d->gtk_session, false);

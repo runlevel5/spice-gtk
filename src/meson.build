@@ -389,6 +389,7 @@ if spice_gtk_has_gtk
     generated_protocols = [
       [ 'pointer-constraints', 'v1' ],
       [ 'relative-pointer', 'v1' ],
+      [ 'keyboard-shortcuts-inhibit', 'v1' ],
     ]
 
     foreach proto: generated_protocols

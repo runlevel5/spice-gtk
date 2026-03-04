@@ -1167,3 +1167,250 @@ spice_compat_clipboard_is_owned_by(SpiceCompatClipboard *clipboard,
     return (gtk_clipboard_get_owner(clipboard) == G_OBJECT(owner));
 #endif
 }
+
+/* ------------------------------------------------------------------ */
+/* 45. gdk_device_warp() — removed in GTK4                            */
+/*                                                                    */
+/* GTK 3: gdk_device_warp(device, screen, x, y)                      */
+/* GTK 4: removed entirely. Use platform-specific pointer warping:    */
+/*   - X11: XWarpPointer() via GDK X11 backend APIs                  */
+/*   - Wayland: not possible (pointer lock handles relative motion)   */
+/*   - Win32: callers already use SetCursorPos() directly             */
+/*                                                                    */
+/* This shim wraps the GTK3 call on GTK3, and provides an X11-only   */
+/* implementation on GTK4.  On GTK4/Wayland the call is a no-op.     */
+/* ------------------------------------------------------------------ */
+static inline void
+spice_compat_device_warp(GdkDisplay *gdk_display, gint x, gint y)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_DISPLAY(gdk_display)) {
+        Display *xdisplay = gdk_x11_display_get_xdisplay(gdk_display);
+        XWarpPointer(xdisplay, None, DefaultRootWindow(xdisplay),
+                     0, 0, 0, 0, x, y);
+        XFlush(xdisplay);
+        return;
+    }
+  #endif
+    /* Wayland / other backends: no-op (pointer lock handles relative motion) */
+    (void)gdk_display; (void)x; (void)y;
+#else
+    GdkDevice *pointer = gdk_seat_get_pointer(
+        gdk_display_get_default_seat(gdk_display));
+    GdkScreen *screen = gdk_display_get_default_screen(gdk_display);
+    gdk_device_warp(pointer, screen, x, y);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 46. gdk_seat_grab() for pointer — removed in GTK4                  */
+/*                                                                    */
+/* GTK 3: gdk_seat_grab(seat, surface, CAPABILITY_ALL_POINTING, ...)  */
+/* GTK 4: removed. Use platform-specific grabs:                       */
+/*   - X11: XGrabPointer()                                            */
+/*   - Wayland: pointer lock via zwp_pointer_constraints_v1           */
+/*              (already handled separately in wayland-extensions.c)   */
+/*   - Win32: ClipCursor() (already handled separately)               */
+/*                                                                    */
+/* Returns GDK_GRAB_SUCCESS on success. On GTK4/Wayland, always       */
+/* returns GDK_GRAB_SUCCESS since actual locking is done via          */
+/* wayland-extensions.  On GTK4/X11, maps X11 grab status.           */
+/* ------------------------------------------------------------------ */
+static inline GdkGrabStatus
+spice_compat_grab_pointer(GdkDisplay *gdk_display,
+                          SpiceCompatSurface *surface,
+                          GdkCursor *cursor)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_DISPLAY(gdk_display)) {
+        Display *xdisplay = gdk_x11_display_get_xdisplay(gdk_display);
+        Window xwindow = GDK_SURFACE_XID(surface);
+        Cursor xcursor = None;
+        int result;
+
+        if (cursor) {
+            /* Get the X cursor from GdkCursor name */
+            const char *name = gdk_cursor_get_name(cursor);
+            if (name && g_strcmp0(name, "none") == 0) {
+                /* Create an invisible cursor */
+                static char empty_data[] = { 0 };
+                Pixmap pixmap = XCreatePixmapFromBitmapData(
+                    xdisplay, xwindow, empty_data, 1, 1, 0, 0, 1);
+                XColor color = { 0 };
+                xcursor = XCreatePixmapCursor(
+                    xdisplay, pixmap, pixmap, &color, &color, 0, 0);
+                XFreePixmap(xdisplay, pixmap);
+            }
+        }
+
+        result = XGrabPointer(xdisplay, xwindow, True,
+                              ButtonPressMask | ButtonReleaseMask |
+                              PointerMotionMask | EnterWindowMask |
+                              LeaveWindowMask,
+                              GrabModeAsync, GrabModeAsync,
+                              xwindow, xcursor, CurrentTime);
+
+        if (xcursor != None)
+            XFreeCursor(xdisplay, xcursor);
+
+        return (result == GrabSuccess) ? GDK_GRAB_SUCCESS : GDK_GRAB_FAILED;
+    }
+  #endif
+    /* Wayland / other: pointer lock is done via zwp_pointer_constraints */
+    (void)gdk_display; (void)surface; (void)cursor;
+    return GDK_GRAB_SUCCESS;
+#else
+    GdkSeat *seat = gdk_display_get_default_seat(gdk_display);
+    return gdk_seat_grab(seat, surface,
+                         GDK_SEAT_CAPABILITY_ALL_POINTING,
+                         TRUE, cursor, NULL, NULL, NULL);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 47. gdk_seat_grab() for keyboard — removed in GTK4                 */
+/*                                                                    */
+/* GTK 3: gdk_seat_grab(seat, surface, CAPABILITY_KEYBOARD, ...)      */
+/* GTK 4: removed. Use platform-specific grabs:                       */
+/*   - X11: XGrabKeyboard()                                           */
+/*   - Wayland: zwp_keyboard_shortcuts_inhibit_manager_v1             */
+/*              (handled in wayland-extensions.c)                      */
+/*   - Win32: keyboard hook (already handled separately)              */
+/* ------------------------------------------------------------------ */
+static inline GdkGrabStatus
+spice_compat_grab_keyboard(GdkDisplay *gdk_display,
+                           SpiceCompatSurface *surface)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_DISPLAY(gdk_display)) {
+        Display *xdisplay = gdk_x11_display_get_xdisplay(gdk_display);
+        Window xwindow = GDK_SURFACE_XID(surface);
+        int result = XGrabKeyboard(xdisplay, xwindow, False,
+                                   GrabModeAsync, GrabModeAsync, CurrentTime);
+        return (result == GrabSuccess) ? GDK_GRAB_SUCCESS : GDK_GRAB_FAILED;
+    }
+  #endif
+    /* Wayland: keyboard shortcuts inhibit handled via wayland-extensions */
+    (void)gdk_display; (void)surface;
+    return GDK_GRAB_SUCCESS;
+#else
+    GdkSeat *seat = gdk_display_get_default_seat(gdk_display);
+    return gdk_seat_grab(seat, surface,
+                         GDK_SEAT_CAPABILITY_KEYBOARD,
+                         FALSE, NULL, NULL, NULL, NULL);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 48. gdk_seat_ungrab() / gdk_device_ungrab() — removed in GTK4      */
+/*                                                                    */
+/* GTK 3: gdk_seat_ungrab() releases all grabs;                       */
+/*         gdk_device_ungrab() releases a single device grab          */
+/* GTK 4: both removed. Use platform-specific ungrab:                 */
+/*   - X11: XUngrabPointer() / XUngrabKeyboard()                     */
+/*   - Wayland: destroy pointer constraint / keyboard inhibitor       */
+/*   - Win32: ClipCursor(NULL) / unhook (handled separately)          */
+/* ------------------------------------------------------------------ */
+static inline void
+spice_compat_ungrab_pointer(GdkDisplay *gdk_display)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_DISPLAY(gdk_display)) {
+        Display *xdisplay = gdk_x11_display_get_xdisplay(gdk_display);
+        XUngrabPointer(xdisplay, CurrentTime);
+        XFlush(xdisplay);
+        return;
+    }
+  #endif
+    /* Wayland: pointer unlock done via wayland-extensions */
+    (void)gdk_display;
+#else
+    GdkDevice *pointer = gdk_seat_get_pointer(
+        gdk_display_get_default_seat(gdk_display));
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    gdk_device_ungrab(pointer, GDK_CURRENT_TIME);
+    G_GNUC_END_IGNORE_DEPRECATIONS
+#endif
+}
+
+static inline void
+spice_compat_ungrab_keyboard(GdkDisplay *gdk_display)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_DISPLAY(gdk_display)) {
+        Display *xdisplay = gdk_x11_display_get_xdisplay(gdk_display);
+        XUngrabKeyboard(xdisplay, CurrentTime);
+        XFlush(xdisplay);
+        return;
+    }
+  #endif
+    /* Wayland: keyboard shortcuts inhibit release via wayland-extensions */
+    (void)gdk_display;
+#else
+    GdkDevice *keyboard = gdk_seat_get_keyboard(
+        gdk_display_get_default_seat(gdk_display));
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    gdk_device_ungrab(keyboard, GDK_CURRENT_TIME);
+    G_GNUC_END_IGNORE_DEPRECATIONS
+#endif
+}
+
+static inline void
+spice_compat_seat_ungrab(GdkDisplay *gdk_display)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* In GTK4, ungrab both pointer and keyboard */
+    spice_compat_ungrab_pointer(gdk_display);
+    spice_compat_ungrab_keyboard(gdk_display);
+#else
+    GdkSeat *seat = gdk_display_get_default_seat(gdk_display);
+    gdk_seat_ungrab(seat);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* 49. gdk_window_get_root_coords() — removed in GTK4                 */
+/*                                                                    */
+/* GTK 3: gdk_window_get_root_coords(window, wx, wy, &rx, &ry)       */
+/*         converts window-relative coords to root (screen) coords.   */
+/* GTK 4: removed. Use platform-specific translation:                 */
+/*   - X11: XTranslateCoordinates() to root window                    */
+/*   - Wayland: not meaningful (no absolute positioning),             */
+/*              but since warp is a no-op there, output (0,0).        */
+/*   - Win32: callers already use Win32 APIs directly                 */
+/* ------------------------------------------------------------------ */
+static inline void
+spice_compat_surface_get_root_coords(SpiceCompatSurface *surface,
+                                     gint wx, gint wy,
+                                     gint *root_x, gint *root_y)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+  #ifdef GDK_WINDOWING_X11
+    GdkDisplay *gdk_display = spice_compat_surface_get_display(surface);
+    if (GDK_IS_X11_DISPLAY(gdk_display)) {
+        Display *xdisplay = gdk_x11_display_get_xdisplay(gdk_display);
+        Window xwindow = GDK_SURFACE_XID(surface);
+        Window root_ret;
+        int rx = 0, ry = 0;
+        XTranslateCoordinates(xdisplay, xwindow,
+                              XDefaultRootWindow(xdisplay),
+                              wx, wy, &rx, &ry, &root_ret);
+        *root_x = rx;
+        *root_y = ry;
+        return;
+    }
+  #endif
+    /* Wayland / other: absolute screen coordinates not available;
+     * pointer warp is a no-op anyway, so output zeros. */
+    *root_x = 0;
+    *root_y = 0;
+    (void)surface; (void)wx; (void)wy;
+#else
+    gdk_window_get_root_coords(surface, wx, wy, root_x, root_y);
+#endif
+}

@@ -24,11 +24,19 @@
 #endif
 #ifdef GDK_WINDOWING_X11
 #include <X11/Xlib.h>
+#ifdef HAVE_GTK_4
+#include <gdk/x11/gdkx.h>
+#else
 #include <gdk/gdkx.h>
+#endif
 #endif
 #ifdef G_OS_WIN32
 #include <windows.h>
+#ifdef HAVE_GTK_4
+#include <gdk/win32/gdkwin32.h>
+#else
 #include <gdk/gdkwin32.h>
+#endif
 #ifndef MAPVK_VK_TO_VSC /* may be undefined in older mingw-headers */
 #define MAPVK_VK_TO_VSC 0
 #endif
