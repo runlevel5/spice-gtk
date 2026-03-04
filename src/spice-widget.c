@@ -529,17 +529,23 @@ static void spice_display_finalize(GObject *obj)
 
 static GdkCursor* spice_display_get_blank_cursor(SpiceDisplay *display)
 {
-    GdkDisplay *gdk_display;
     const gchar *cursor_name;
+#if !GTK_CHECK_VERSION(4, 0, 0)
+    GdkDisplay *gdk_display;
     SpiceCompatSurface *surface = SPICE_COMPAT_GDK_SURFACE(spice_compat_widget_get_surface(GTK_WIDGET(display)));
 
     if (surface == NULL)
         return NULL;
 
     gdk_display = spice_compat_surface_get_display(surface);
+#endif
     cursor_name = g_getenv("SPICE_DEBUG_CURSOR") ? "crosshair" : "none";
 
+#if GTK_CHECK_VERSION(4, 0, 0)
+    return gdk_cursor_new_from_name(cursor_name, NULL);
+#else
     return gdk_cursor_new_from_name(gdk_display, cursor_name);
+#endif
 }
 
 #if !GTK_CHECK_VERSION(4, 0, 0)
@@ -2997,6 +3003,10 @@ static void primary_destroy(SpiceDisplayChannel *channel, gpointer data)
 static void queue_draw_area(SpiceDisplay *display, gint x, gint y,
                             gint width, gint height)
 {
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* GTK4 removed gtk_widget_queue_draw_area(); redraw entire widget */
+    gtk_widget_queue_draw(GTK_WIDGET(display));
+#else
     if (!spice_compat_widget_get_has_window(GTK_WIDGET(display))) {
         GtkAllocation allocation;
 
@@ -3007,6 +3017,7 @@ static void queue_draw_area(SpiceDisplay *display, gint x, gint y,
 
     gtk_widget_queue_draw_area(GTK_WIDGET(display),
                                x, y, width, height);
+#endif
 }
 
 #if defined(GDK_WINDOWING_X11)

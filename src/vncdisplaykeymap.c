@@ -66,7 +66,11 @@ static unsigned int ref_count_for_untranslated_keys = 0;
 #endif
 
 #ifdef GDK_WINDOWING_BROADWAY
+#ifdef HAVE_GTK_4
+#include <gdk/broadway/gdkbroadway.h>
+#else
 #include <gdk/gdkbroadway.h>
+#endif
 #endif
 
 #if defined(GDK_WINDOWING_X11) || defined(GDK_WINDOWING_WAYLAND)
@@ -172,7 +176,11 @@ const guint16 *vnc_display_keymap_gdk2xtkbd_table(SpiceCompatSurface *window,
 				      XkbUseCoreKbd);
 		if (desc) {
 			if (XkbGetNames(xdisplay, XkbKeycodesNameMask, desc) == Success) {
+#if GTK_CHECK_VERSION(4, 0, 0)
+				keycodes = gdk_x11_get_xatom_name_for_display(dpy, desc->names->keycodes);
+#else
 				keycodes = gdk_x11_get_xatom_name(desc->names->keycodes);
+#endif
 				if (!keycodes)
 					g_warning("could not lookup keycode name");
 			}

@@ -168,16 +168,23 @@ spice_usb_device_widget_show_info_bar(SpiceUsbDeviceWidget *self,
                                       const gchar *stock_icon_id)
 {
     SpiceUsbDeviceWidgetPrivate *priv = self->priv;
-    GtkWidget *info_bar, *content_area, *hbox, *widget;
+    GtkWidget *info_bar, *hbox, *widget;
+#if !GTK_CHECK_VERSION(4, 0, 0)
+    GtkWidget *content_area;
+#endif
 
     spice_usb_device_widget_hide_info_bar(self);
 
     info_bar = gtk_info_bar_new();
     gtk_info_bar_set_message_type(GTK_INFO_BAR(info_bar), message_type);
 
-    content_area = gtk_info_bar_get_content_area(GTK_INFO_BAR(info_bar));
     hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_info_bar_add_child(GTK_INFO_BAR(info_bar), hbox);
+#else
+    content_area = gtk_info_bar_get_content_area(GTK_INFO_BAR(info_bar));
     spice_compat_box_pack_start(GTK_BOX(content_area), hbox, TRUE, TRUE, 0);
+#endif
 
     widget = spice_compat_image_new_from_icon_name(stock_icon_id,
                                           GTK_ICON_SIZE_SMALL_TOOLBAR);
@@ -236,7 +243,6 @@ static void
 empty_cd_clicked_cb(GtkToggleButton *toggle, gpointer user_data)
 {
     SpiceUsbDeviceWidget *self = SPICE_USB_DEVICE_WIDGET(user_data);
-    SpiceUsbDeviceWidgetPrivate *priv = self->priv;
 
     if (!gtk_toggle_button_get_active(toggle)) {
         return;
@@ -253,6 +259,7 @@ empty_cd_clicked_cb(GtkToggleButton *toggle, gpointer user_data)
                          self);
     g_object_unref(dialog);
 #else
+    SpiceUsbDeviceWidgetPrivate *priv = self->priv;
     GtkWidget *dialog;
     gint dialog_rc;
 

@@ -14,6 +14,27 @@
 #include "config.h"
 #include <gtk/gtk.h>
 
+/*
+ * Backend headers needed for platform-specific shims (#45-#49).
+ * GTK4 moved backend headers to subdirectories.
+ */
+#ifdef GDK_WINDOWING_X11
+  #ifdef HAVE_GTK_4
+    #include <gdk/x11/gdkx.h>
+  #else
+    #include <gdk/gdkx.h>
+  #endif
+  #include <X11/Xlib.h>
+#endif
+
+#ifdef GDK_WINDOWING_WAYLAND
+  #ifdef HAVE_GTK_4
+    #include <gdk/wayland/gdkwayland.h>
+  #else
+    #include <gdk/gdkwayland.h>
+  #endif
+#endif
+
 /* ------------------------------------------------------------------ */
 /* 1. GtkGestureMultiPress → GtkGestureClick                         */
 /*                                                                    */
@@ -490,21 +511,30 @@ spice_compat_surface_get_device_position(SpiceCompatSurface *surface,
 #endif
 
 /* ------------------------------------------------------------------ */
-/* 20. gdk_cairo_surface_create_from_pixbuf() window parameter       */
+/* 20. gdk_cairo_surface_create_from_pixbuf() removed in GTK4        */
 /*                                                                    */
 /* GTK 3: gdk_cairo_surface_create_from_pixbuf(pixbuf, scale, window)*/
-/*         window is used to determine the actual scale factor.       */
-/* GTK 4: gdk_cairo_surface_create_from_pixbuf(pixbuf, scale, NULL)  */
-/*         The window parameter was removed; pass NULL.               */
-/* Note: This function is NOT removed in GTK4, just the 3rd arg      */
-/* meaning changed. We keep the wrapper for clarity.                  */
+/*         Creates a cairo surface from a pixbuf.                     */
+/* GTK 4: This function was removed. Use gdk_pixbuf data directly    */
+/*         to create a cairo_image_surface.                           */
 /* ------------------------------------------------------------------ */
 static inline cairo_surface_t *
 spice_compat_cairo_surface_from_pixbuf(GdkPixbuf *pixbuf, int scale,
                                        SpiceCompatSurface *surface G_GNUC_UNUSED)
 {
 #if GTK_CHECK_VERSION(4, 0, 0)
-    return gdk_cairo_surface_create_from_pixbuf(pixbuf, scale, NULL);
+    int width = gdk_pixbuf_get_width(pixbuf);
+    int height = gdk_pixbuf_get_height(pixbuf);
+    cairo_surface_t *cs = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+    cairo_t *cr = cairo_create(cs);
+
+    gdk_cairo_set_source_pixbuf(cr, pixbuf, 0, 0);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+
+    if (scale > 0)
+        cairo_surface_set_device_scale(cs, scale, scale);
+    return cs;
 #else
     return gdk_cairo_surface_create_from_pixbuf(pixbuf, scale, surface);
 #endif
@@ -985,10 +1015,18 @@ spice_compat_check_button_set_child(GtkCheckButton *button, GtkWidget *child)
 /*                                                                    */
 /* Note: We collect children into a list first to allow the callback  */
 /* to safely remove/destroy widgets during iteration.                 */
+/*                                                                    */
+/* GtkCallback typedef was removed in GTK4; define it for compat.     */
 /* ------------------------------------------------------------------ */
+#if GTK_CHECK_VERSION(4, 0, 0)
+typedef void (*SpiceCompatContainerCallback)(GtkWidget *widget, gpointer data);
+#else
+typedef GtkCallback SpiceCompatContainerCallback;
+#endif
+
 static inline void
 spice_compat_container_foreach(GtkWidget *container,
-                               GtkCallback callback,
+                               SpiceCompatContainerCallback callback,
                                gpointer callback_data)
 {
 #if GTK_CHECK_VERSION(4, 0, 0)
@@ -1202,6 +1240,16 @@ spice_compat_device_warp(GdkDisplay *gdk_display, gint x, gint y)
     gdk_device_warp(pointer, screen, x, y);
 #endif
 }
+
+/* ------------------------------------------------------------------ */
+/* GdkGrabStatus was removed in GTK4 — define compat constants.       */
+/* ------------------------------------------------------------------ */
+#if GTK_CHECK_VERSION(4, 0, 0)
+typedef enum {
+    GDK_GRAB_SUCCESS = 0,
+    GDK_GRAB_FAILED  = 5
+} GdkGrabStatus;
+#endif
 
 /* ------------------------------------------------------------------ */
 /* 46. gdk_seat_grab() for pointer — removed in GTK4                  */

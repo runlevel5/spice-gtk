@@ -2517,7 +2517,7 @@ void spice_gtk_session_copy_to_guest(SpiceGtkSession *self)
     if (s->clip_hasdata[selection] && !s->clip_grabbed[selection]) {
 #if GTK_CHECK_VERSION(4, 0, 0)
         /* GTK4: read clipboard formats directly instead of requesting targets */
-        clipboard_get_targets_gtk4(s->clipboard, self);
+        clipboard_get_targets_gtk4(self, s->clipboard);
 #else
         gtk_clipboard_request_targets(s->clipboard, clipboard_get_targets,
                                       get_weak_ref(self));
