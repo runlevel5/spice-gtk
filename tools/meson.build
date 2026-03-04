@@ -32,3 +32,13 @@ if spice_gtk_has_gtk and spice_gtk_version == '3'
              install : true,
              dependencies : spice_client_gtk_dep)
 endif
+
+#
+# spicy-test-gtk4 — minimal test client for the GTK4 port
+#
+if spice_gtk_has_gtk and spice_gtk_version == '4'
+  executable('spicy-test-gtk4',
+             sources : ['spicy-test-gtk4.c'] + spice_cmdline_sources,
+             install : false,
+             dependencies : spice_client_gtk_dep)
+endif
