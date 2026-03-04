@@ -334,12 +334,11 @@ main(int argc, char *argv[])
     g_option_context_free(context);
 
     GtkApplication *app = gtk_application_new("org.spice.gtk4test",
-                                              G_APPLICATION_FLAGS_NONE);
+                                              G_APPLICATION_NON_UNIQUE);
     g_signal_connect(app, "activate", G_CALLBACK(app_activate_cb), NULL);
     g_signal_connect(app, "shutdown", G_CALLBACK(app_shutdown_cb), NULL);
 
-    int status = g_application_run(G_APPLICATION(app), 0, NULL);
-    /* Pass 0/NULL since we already parsed args above */
+    int status = g_application_run(G_APPLICATION(app), argc, argv);
 
     g_object_unref(app);
     return status;

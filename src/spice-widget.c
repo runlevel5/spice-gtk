@@ -154,6 +154,7 @@ static gboolean gst_draw_event(GtkWidget *widget, cairo_t *cr, gpointer data);
 static void gst_size_allocate(GtkWidget *widget, GdkRectangle *a, gpointer data);
 #endif
 static void update_size_request(SpiceDisplay *display);
+static void spice_display_queue_draw(SpiceDisplay *display);
 static GdkDevice *spice_gdk_window_get_pointing_device(SpiceCompatSurface *surface);
 
 /* Event controller callbacks (GTK 3.24+) */
@@ -229,7 +230,7 @@ static void scaling_updated(SpiceDisplay *display)
     recalc_geometry(GTK_WIDGET(display));
     if (d->canvas.surface && surface) { /* if not yet shown */
         update_mouse_cursor(display);
-        gtk_widget_queue_draw(GTK_WIDGET(display));
+        spice_display_queue_draw(display);
     }
     update_size_request(display);
 }
@@ -321,7 +322,7 @@ static void update_ready(SpiceDisplay *display)
         return;
 
     if (ready && spice_compat_widget_get_surface(GTK_WIDGET(display)))
-        gtk_widget_queue_draw(GTK_WIDGET(display));
+        spice_display_queue_draw(display);
 
     d->ready = ready;
     g_object_notify(G_OBJECT(display), "ready");
@@ -3005,12 +3006,28 @@ static void primary_destroy(SpiceDisplayChannel *channel, gpointer data)
     set_monitor_ready(display, false);
 }
 
+static void spice_display_queue_draw(SpiceDisplay *display)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* GTK4: queue_draw on the visible stack child (the GtkDrawingArea),
+       not on the SpiceDisplay GtkBox — GTK4 does not propagate
+       queue_draw from parent containers to children */
+    SpiceDisplayPrivate *d = display->priv;
+    GtkWidget *child = gtk_stack_get_visible_child(d->stack);
+    if (child)
+        gtk_widget_queue_draw(child);
+    else
+        gtk_widget_queue_draw(GTK_WIDGET(display));
+#else
+    gtk_widget_queue_draw(GTK_WIDGET(display));
+#endif
+}
+
 static void queue_draw_area(SpiceDisplay *display, gint x, gint y,
                             gint width, gint height)
 {
 #if GTK_CHECK_VERSION(4, 0, 0)
-    /* GTK4 removed gtk_widget_queue_draw_area(); redraw entire widget */
-    gtk_widget_queue_draw(GTK_WIDGET(display));
+    spice_display_queue_draw(display);
 #else
     if (!spice_compat_widget_get_has_window(GTK_WIDGET(display))) {
         GtkAllocation allocation;
