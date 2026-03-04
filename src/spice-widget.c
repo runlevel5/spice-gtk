@@ -1415,7 +1415,7 @@ static void ungrab_pointer(SpiceDisplay *display)
 
 #if GTK_CHECK_VERSION(4, 0, 0)
     /* In GTK4, we can ungrab just the pointer independently via
-     * platform-specific APIs (XUngrabPointer on X11).  On Wayland,
+     * platform-specific APIs (XIUngrabDevice on X11).  On Wayland,
      * pointer unlock is done separately via wayland-extensions.
      */
     spice_compat_ungrab_pointer(gdk_display);

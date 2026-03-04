@@ -1257,7 +1257,8 @@ typedef enum {
 /*                                                                    */
 /* GTK 3: gdk_seat_grab(seat, surface, CAPABILITY_ALL_POINTING, ...)  */
 /* GTK 4: removed. Use platform-specific grabs:                       */
-/*   - X11: XGrabPointer()                                            */
+/*   - X11: XIGrabDevice() (XI2 level, compatible with GTK4's XI2     */
+/*          event dispatch — XGrabPointer core grabs break GTK4)      */
 /*   - Wayland: pointer lock via zwp_pointer_constraints_v1           */
 /*              (already handled separately in wayland-extensions.c)   */
 /*   - Win32: ClipCursor() (already handled separately)               */
@@ -1277,7 +1278,6 @@ spice_compat_grab_pointer(GdkDisplay *gdk_display,
         Display *xdisplay = gdk_x11_display_get_xdisplay(gdk_display);
         Window xwindow = GDK_SURFACE_XID(surface);
         Cursor xcursor = None;
-        int result;
 
         if (cursor) {
             /* Get the X cursor from GdkCursor name */
@@ -1294,12 +1294,37 @@ spice_compat_grab_pointer(GdkDisplay *gdk_display,
             }
         }
 
-        result = XGrabPointer(xdisplay, xwindow, True,
-                              ButtonPressMask | ButtonReleaseMask |
-                              PointerMotionMask | EnterWindowMask |
-                              LeaveWindowMask,
-                              GrabModeAsync, GrabModeAsync,
-                              xwindow, xcursor, CurrentTime);
+        /* Get the XI2 device ID for the pointer from GDK's seat.
+         * We must grab at the XI2 level because GTK4 uses XInput2
+         * exclusively — a core XGrabPointer() would suppress XI2
+         * events, causing GtkEventControllerMotion and GtkGestureClick
+         * to stop receiving events. */
+        GdkSeat *seat = gdk_display_get_default_seat(gdk_display);
+        GdkDevice *pointer = gdk_seat_get_pointer(seat);
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+        int xi2_device_id = gdk_x11_device_get_id(pointer);
+G_GNUC_END_IGNORE_DEPRECATIONS
+
+        XIEventMask mask;
+        unsigned char mask_bits[(XI_LASTEVENT + 7) / 8];
+        memset(mask_bits, 0, sizeof(mask_bits));
+        XISetMask(mask_bits, XI_Motion);
+        XISetMask(mask_bits, XI_ButtonPress);
+        XISetMask(mask_bits, XI_ButtonRelease);
+        XISetMask(mask_bits, XI_Enter);
+        XISetMask(mask_bits, XI_Leave);
+        mask.deviceid = xi2_device_id;
+        mask.mask_len = sizeof(mask_bits);
+        mask.mask = mask_bits;
+
+        /* XIGrabDevice does not have a confine_to parameter, but the
+         * existing mouse_warp() mechanism (which warps the pointer back
+         * to screen center on every motion event) provides effective
+         * confinement in server mouse mode. */
+        int result = XIGrabDevice(xdisplay, xi2_device_id, xwindow,
+                                  CurrentTime, xcursor,
+                                  GrabModeAsync, GrabModeAsync,
+                                  False, &mask);
 
         if (xcursor != None)
             XFreeCursor(xdisplay, xcursor);
@@ -1382,7 +1407,7 @@ G_GNUC_END_IGNORE_DEPRECATIONS
 /* GTK 3: gdk_seat_ungrab() releases all grabs;                       */
 /*         gdk_device_ungrab() releases a single device grab          */
 /* GTK 4: both removed. Use platform-specific ungrab:                 */
-/*   - X11: XUngrabPointer() / XUngrabKeyboard()                     */
+/*   - X11: XIUngrabDevice() (XI2 level, matching the XI2 grabs)      */
 /*   - Wayland: destroy pointer constraint / keyboard inhibitor       */
 /*   - Win32: ClipCursor(NULL) / unhook (handled separately)          */
 /* ------------------------------------------------------------------ */
@@ -1393,7 +1418,12 @@ spice_compat_ungrab_pointer(GdkDisplay *gdk_display)
   #ifdef GDK_WINDOWING_X11
     if (GDK_IS_X11_DISPLAY(gdk_display)) {
         Display *xdisplay = gdk_x11_display_get_xdisplay(gdk_display);
-        XUngrabPointer(xdisplay, CurrentTime);
+        GdkSeat *seat = gdk_display_get_default_seat(gdk_display);
+        GdkDevice *pointer = gdk_seat_get_pointer(seat);
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+        int xi2_device_id = gdk_x11_device_get_id(pointer);
+G_GNUC_END_IGNORE_DEPRECATIONS
+        XIUngrabDevice(xdisplay, xi2_device_id, CurrentTime);
         XFlush(xdisplay);
         return;
     }
