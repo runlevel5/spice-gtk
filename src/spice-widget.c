@@ -583,6 +583,47 @@ static void file_transfer_callback(GObject *source_object,
     g_clear_error(&error);
 }
 
+#if GTK_CHECK_VERSION(4, 0, 0)
+static gboolean drop_cb(GtkDropTarget *target,
+                         const GValue *value,
+                         gdouble x,
+                         gdouble y,
+                         gpointer user_data)
+{
+    SpiceDisplay *self = SPICE_DISPLAY(user_data);
+    SpiceDisplayPrivate *d = self->priv;
+    GdkFileList *file_list;
+    GSList *files_slist;
+    GSList *l;
+    int n_files;
+    GFile **files;
+    int i = 0;
+
+    DISPLAY_DEBUG(self, "%s: drop files", __FUNCTION__);
+
+    file_list = g_value_get_boxed(value);
+    g_return_val_if_fail(file_list != NULL, FALSE);
+
+    files_slist = gdk_file_list_get_files(file_list);
+    n_files = g_slist_length(files_slist);
+    if (n_files == 0)
+        return FALSE;
+
+    files = g_new0(GFile *, n_files + 1);
+    for (l = files_slist; l != NULL; l = l->next) {
+        files[i++] = g_object_ref(G_FILE(l->data));
+    }
+
+    spice_main_channel_file_copy_async(d->main, files, 0, NULL, NULL, NULL,
+                                       file_transfer_callback, NULL);
+    for (i = 0; i < n_files; i++) {
+        g_object_unref(files[i]);
+    }
+    g_free(files);
+
+    return TRUE;
+}
+#else
 static void drag_data_received_callback(SpiceDisplay *self,
                                         GdkDragContext *drag_context,
                                         gint x,
@@ -623,6 +664,7 @@ static void drag_data_received_callback(SpiceDisplay *self,
 
     gtk_drag_finish(drag_context, TRUE, FALSE, time);
 }
+#endif /* !GTK4 */
 
 #if !GTK_CHECK_VERSION(4, 0, 0)
 static void grab_notify(SpiceDisplay *display, gboolean was_grabbed)
@@ -686,7 +728,9 @@ static void spice_display_init(SpiceDisplay *display)
     GtkWidget *widget = GTK_WIDGET(display);
     GtkWidget *area;
     SpiceDisplayPrivate *d;
+#if !GTK_CHECK_VERSION(4, 0, 0)
     GtkTargetEntry targets = { "text/uri-list", 0, 0 };
+#endif
 
     d = display->priv = spice_display_get_instance_private(display);
     d->stack = GTK_STACK(gtk_stack_new());
@@ -729,9 +773,18 @@ static void spice_display_init(SpiceDisplay *display)
     g_signal_connect(display, "grab-notify", G_CALLBACK(grab_notify), NULL);
 #endif
 
+#if GTK_CHECK_VERSION(4, 0, 0)
+    {
+        GtkDropTarget *drop_target;
+        drop_target = gtk_drop_target_new(GDK_TYPE_FILE_LIST, GDK_ACTION_COPY);
+        g_signal_connect(drop_target, "drop", G_CALLBACK(drop_cb), display);
+        gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(drop_target));
+    }
+#else
     gtk_drag_dest_set(widget, GTK_DEST_DEFAULT_ALL, &targets, 1, GDK_ACTION_COPY);
     g_signal_connect(display, "drag-data-received",
                      G_CALLBACK(drag_data_received_callback), NULL);
+#endif
     g_signal_connect(display, "size-allocate", G_CALLBACK(size_allocate), NULL);
 
     spice_compat_widget_add_events(widget,
