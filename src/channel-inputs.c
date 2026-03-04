@@ -549,10 +549,12 @@ void spice_inputs_channel_key_press(SpiceInputsChannel *channel, guint scancode)
 
     g_return_if_fail(channel != NULL);
     g_return_if_fail(SPICE_CHANNEL(channel)->priv->state != SPICE_CHANNEL_STATE_UNCONNECTED);
-    if (SPICE_CHANNEL(channel)->priv->state != SPICE_CHANNEL_STATE_READY)
+    if (SPICE_CHANNEL(channel)->priv->state != SPICE_CHANNEL_STATE_READY) {
         return;
-    if (spice_channel_get_read_only(SPICE_CHANNEL(channel)))
+    }
+    if (spice_channel_get_read_only(SPICE_CHANNEL(channel))) {
         return;
+    }
 
     down.code = spice_make_scancode(scancode, FALSE);
     msg = spice_msg_out_new(SPICE_CHANNEL(channel), SPICE_MSGC_INPUTS_KEY_DOWN);
@@ -637,10 +639,12 @@ void spice_inputs_channel_key_press_and_release(SpiceInputsChannel *input_channe
     g_return_if_fail(channel != NULL);
     g_return_if_fail(channel->priv->state != SPICE_CHANNEL_STATE_UNCONNECTED);
 
-    if (channel->priv->state != SPICE_CHANNEL_STATE_READY)
+    if (channel->priv->state != SPICE_CHANNEL_STATE_READY) {
         return;
-    if (spice_channel_get_read_only(channel))
+    }
+    if (spice_channel_get_read_only(channel)) {
         return;
+    }
 
     if (spice_channel_test_capability(channel, SPICE_INPUTS_CAP_KEY_SCANCODE)) {
         SpiceMsgOut *msg;

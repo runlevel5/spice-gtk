@@ -21,6 +21,7 @@
 #ifdef GDK_WINDOWING_X11
   #ifdef HAVE_GTK_4
     #include <gdk/x11/gdkx.h>
+    #include <X11/extensions/XInput2.h>
   #else
     #include <gdk/gdkx.h>
   #endif
@@ -1322,7 +1323,8 @@ spice_compat_grab_pointer(GdkDisplay *gdk_display,
 /*                                                                    */
 /* GTK 3: gdk_seat_grab(seat, surface, CAPABILITY_KEYBOARD, ...)      */
 /* GTK 4: removed. Use platform-specific grabs:                       */
-/*   - X11: XGrabKeyboard()                                           */
+/*   - X11: XIGrabDevice() (XI2 level, compatible with GTK4's XI2     */
+/*          event dispatch — XGrabKeyboard core grabs break GTK4)     */
 /*   - Wayland: zwp_keyboard_shortcuts_inhibit_manager_v1             */
 /*              (handled in wayland-extensions.c)                      */
 /*   - Win32: keyboard hook (already handled separately)              */
@@ -1336,8 +1338,30 @@ spice_compat_grab_keyboard(GdkDisplay *gdk_display,
     if (GDK_IS_X11_DISPLAY(gdk_display)) {
         Display *xdisplay = gdk_x11_display_get_xdisplay(gdk_display);
         Window xwindow = GDK_SURFACE_XID(surface);
-        int result = XGrabKeyboard(xdisplay, xwindow, False,
-                                   GrabModeAsync, GrabModeAsync, CurrentTime);
+
+        /* Get the XI2 device ID for the keyboard from GDK's seat.
+         * We must grab at the XI2 level because GTK4 uses XInput2
+         * exclusively — a core XGrabKeyboard() would bypass GTK4's
+         * event dispatch and GtkEventControllerKey would never fire. */
+        GdkSeat *seat = gdk_display_get_default_seat(gdk_display);
+        GdkDevice *keyboard = gdk_seat_get_keyboard(seat);
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+        int xi2_device_id = gdk_x11_device_get_id(keyboard);
+G_GNUC_END_IGNORE_DEPRECATIONS
+
+        XIEventMask mask;
+        unsigned char mask_bits[(XI_LASTEVENT + 7) / 8];
+        memset(mask_bits, 0, sizeof(mask_bits));
+        XISetMask(mask_bits, XI_KeyPress);
+        XISetMask(mask_bits, XI_KeyRelease);
+        mask.deviceid = xi2_device_id;
+        mask.mask_len = sizeof(mask_bits);
+        mask.mask = mask_bits;
+
+        int result = XIGrabDevice(xdisplay, xi2_device_id, xwindow,
+                                  CurrentTime, None,
+                                  GrabModeAsync, GrabModeAsync,
+                                  False, &mask);
         return (result == GrabSuccess) ? GDK_GRAB_SUCCESS : GDK_GRAB_FAILED;
     }
   #endif
@@ -1392,7 +1416,12 @@ spice_compat_ungrab_keyboard(GdkDisplay *gdk_display)
   #ifdef GDK_WINDOWING_X11
     if (GDK_IS_X11_DISPLAY(gdk_display)) {
         Display *xdisplay = gdk_x11_display_get_xdisplay(gdk_display);
-        XUngrabKeyboard(xdisplay, CurrentTime);
+        GdkSeat *seat = gdk_display_get_default_seat(gdk_display);
+        GdkDevice *keyboard = gdk_seat_get_keyboard(seat);
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+        int xi2_device_id = gdk_x11_device_get_id(keyboard);
+G_GNUC_END_IGNORE_DEPRECATIONS
+        XIUngrabDevice(xdisplay, xi2_device_id, CurrentTime);
         XFlush(xdisplay);
         return;
     }
@@ -1460,5 +1489,19 @@ spice_compat_surface_get_root_coords(SpiceCompatSurface *surface,
     (void)surface; (void)wx; (void)wy;
 #else
     gdk_window_get_root_coords(surface, wx, wy, root_x, root_y);
+#endif
+}
+
+/* Shim #50: Focus handling — GTK4 split can-focus into two properties:
+ *   - "can-focus": whether focus can enter the widget or its descendants
+ *   - "focusable": whether the widget itself can receive input focus
+ * In GTK3, set_can_focus(TRUE) made the widget focusable. In GTK4,
+ * we must also call set_focusable(TRUE) to get the same behavior. */
+static inline void
+spice_compat_widget_set_can_focus(GtkWidget *widget, gboolean can_focus)
+{
+    gtk_widget_set_can_focus(widget, can_focus);
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_widget_set_focusable(widget, can_focus);
 #endif
 }

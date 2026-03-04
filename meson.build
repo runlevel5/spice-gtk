@@ -160,6 +160,14 @@ if d.found()
     d = dependency('x11', required: false)
     if d.found()
       spice_gtk_deps += d
+      # GTK4's X11 backend uses XInput2 exclusively; we need libXi
+      # for XIGrabDevice/XIUngrabDevice keyboard grabs
+      if spice_gtk_version == '4'
+        d_xi = dependency('xi', required: false)
+        if d_xi.found()
+          spice_gtk_deps += d_xi
+        endif
+      endif
     endif
     d = dependency('libva-x11', required: false)
     if d.found()

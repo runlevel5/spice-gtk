@@ -454,7 +454,7 @@ static void spice_display_set_property(GObject      *object,
         break;
     case PROP_DISABLE_INPUTS:
         d->disable_inputs = g_value_get_boolean(value);
-        gtk_widget_set_can_focus(GTK_WIDGET(display), !d->disable_inputs);
+        spice_compat_widget_set_can_focus(GTK_WIDGET(display), !d->disable_inputs);
         update_keyboard_grab(display);
         update_mouse_grab(display);
         break;
@@ -820,15 +820,21 @@ static void spice_display_init(SpiceDisplay *display)
                            /* on Wayland, only smooth-scroll events are emitted */
                            GDK_SMOOTH_SCROLL_MASK |
                            GDK_SCROLL_MASK);
-    gtk_widget_set_can_focus(widget, true);
+    spice_compat_widget_set_can_focus(widget, true);
 
     /* Create event controllers (GTK 3.24+).
      * In GTK 3.24, constructors take a widget and auto-attach.
      * In GTK4, focus handling moves to GtkEventControllerFocus. */
 
-    /* Key controller — handles key press/release */
+    /* Key controller — handles key press/release.
+     * GTK4: use CAPTURE phase so we intercept keys before child widgets,
+     * since GtkBox.grab_focus() delegates to children by default. */
     d->key_controller = spice_compat_event_controller_key_new(widget);
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_event_controller_set_propagation_phase(d->key_controller, GTK_PHASE_CAPTURE);
+#else
     gtk_event_controller_set_propagation_phase(d->key_controller, GTK_PHASE_BUBBLE);
+#endif
     g_signal_connect(d->key_controller, "key-pressed", G_CALLBACK(key_pressed_cb), display);
     g_signal_connect(d->key_controller, "key-released", G_CALLBACK(key_released_cb), display);
     spice_compat_connect_focus(d->key_controller, widget,
@@ -1746,11 +1752,15 @@ static void send_key(SpiceDisplay *display, int scancode, SendKeyType type, gboo
 
     g_return_if_fail(scancode != 0);
 
-    if (!d->inputs)
+    if (!d->inputs) {
+        g_warning("send_key: no inputs channel!");
         return;
+    }
 
-    if (d->disable_inputs)
+    if (d->disable_inputs) {
+        g_warning("send_key: inputs disabled!");
         return;
+    }
 
     i = scancode / 32;
     b = scancode % 32;
@@ -1768,19 +1778,21 @@ static void send_key(SpiceDisplay *display, int scancode, SendKeyType type, gboo
             g_warn_if_fail(d->key_delayed_id == 0);
             d->key_delayed_id = g_timeout_add(d->keypress_delay, key_press_delayed, display);
             d->key_delayed_scancode = scancode;
-        } else
+        } else {
             spice_inputs_channel_key_press(d->inputs, scancode);
+        }
 
         d->key_state[i] |= m;
         break;
 
     case SEND_KEY_RELEASE:
-        if (!(d->key_state[i] & m))
+        if (!(d->key_state[i] & m)) {
             break;
+        }
 
-        if (d->key_delayed_scancode == scancode)
+        if (d->key_delayed_scancode == scancode) {
             key_press_and_release(display);
-        else {
+        } else {
             /* ensure delayed key is pressed before other key are released */
             key_press_delayed(display);
             spice_inputs_channel_key_release(d->inputs, scancode);
@@ -1952,8 +1964,10 @@ static gboolean key_event_cb(SpiceDisplay *display, GdkEventType type,
         d->seq_pressed = FALSE;
     }
 
-    if (!d->inputs)
+    if (!d->inputs) {
+        g_warning("key_event_cb: no inputs channel, dropping key");
         return true;
+    }
 
     if (keyval == GDK_KEY_Pause) {
         return send_pause(display, type);
