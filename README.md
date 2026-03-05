@@ -16,15 +16,17 @@ Project content
     * SpiceAudio (see spice-audio.h).
     * Various Spice\<Type\>Channel (see channel-\<type\>.h).
 
-* **libspice-client-gtk-3.0**
+* **libspice-client-gtk-3.0** (GTK3) / **libspice-client-gtk-4.0** (GTK4)
 
-    provides gtk widget to show spice display and accept user input.
+    Provides a GTK widget to show spice display and accept user input.
+    Build one or the other by setting `-Dgtk_version=3` (default) or
+    `-Dgtk_version=4`.
     * SpiceDisplay (see spice-widget.h)
 
 * **spicy**
 
-   a gtk test client. The recommended client for end user is
-   [virt-viewer]
+   A GTK3 test client (not built when `-Dgtk_version=4`).
+   The recommended client for end users is [virt-viewer]
 
 * **spicy-screenshot**
 
@@ -49,10 +51,18 @@ Build dependencies:
     dnf builddep spice-gtk
 >>>
 
-* or install:
+* or install (for GTK3):
 
 >>>
     meson ninja gtk3-devel spice-protocol openssl-devel pulseaudio-libs-devel pixman-devel
+    gobject-introspection-devel libjpeg-turbo-devel zlib-devel cyrus-sasl-devel gtk-doc
+    gettext-devel vala vala-tools python3 python3-pyparsing
+>>>
+
+* For GTK4, replace `gtk3-devel` with `gtk4-devel`:
+
+>>>
+    meson ninja gtk4-devel spice-protocol openssl-devel pulseaudio-libs-devel pixman-devel
     gobject-introspection-devel libjpeg-turbo-devel zlib-devel cyrus-sasl-devel gtk-doc
     gettext-devel vala vala-tools python3 python3-pyparsing
 >>>
@@ -61,4 +71,12 @@ The GStreamer backend needs:
 
 >>>
     gstreamer1-devel gstreamer1-plugins-base-devel gstreamer1-plugins-good gstreamer1-plugins-bad-free
+>>>
+
+Building with GTK4
+------------------
+
+>>>
+    meson setup builddir-gtk4 -Dgtk_version=4
+    ninja -C builddir-gtk4
 >>>
