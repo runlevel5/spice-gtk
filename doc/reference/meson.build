@@ -29,15 +29,22 @@ ignore_headers = [
   'usbutil.h',
   'vmcstream.h',
   'vncdisplaykeymap.h',
+  'wayland-extensions.h',
   'win-usb-dev.h',
+  'spice-gtk-compat.h',
 ]
 
 spice_gtk_doc_dep = declare_dependency(link_with : [spice_client_gtk_lib, spice_client_glib_lib])
 
 glib_prefix = dependency('glib-2.0').get_variable(pkgconfig: 'prefix')
 glib_docpath = glib_prefix / 'share' / 'gtk-doc' / 'html'
-gtk_prefix = dependency('gtk+-3.0').get_variable(pkgconfig: 'prefix')
+gtk_prefix = dependency(gtk_pkg).get_variable(pkgconfig: 'prefix')
 gtk_docpath = gtk_prefix / 'share' / 'gtk-doc' / 'html'
+if spice_gtk_version == '4'
+  gtk_doc_dirname = 'gtk4'
+else
+  gtk_doc_dirname = 'gtk3'
+endif
 docpath = spice_gtk_datadir / 'gtk-doc' / 'html'
 
 gnome.gtkdoc(meson.project_name(),
@@ -59,6 +66,6 @@ gnome.gtkdoc(meson.project_name(),
                '--extra-dir=@0@'.format(glib_docpath / 'glib'),
                '--extra-dir=@0@'.format(glib_docpath / 'gobject'),
                '--extra-dir=@0@'.format(glib_docpath / 'gio'),
-               '--extra-dir=@0@'.format(gtk_docpath / 'gtk3'),
+               '--extra-dir=@0@'.format(gtk_docpath / gtk_doc_dirname),
              ],
             )
