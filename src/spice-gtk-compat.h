@@ -1535,3 +1535,11 @@ spice_compat_widget_set_can_focus(GtkWidget *widget, gboolean can_focus)
     gtk_widget_set_focusable(widget, can_focus);
 #endif
 }
+
+/* Shim #51: gtk_widget_get_allocated_width/height deprecated in GTK 4.12.
+ * GTK4 replaces them with gtk_widget_get_width/height. Map to the new
+ * names so callers work on both GTK3 and GTK4 without warnings. */
+#if GTK_CHECK_VERSION(4, 0, 0)
+#define gtk_widget_get_allocated_width  gtk_widget_get_width
+#define gtk_widget_get_allocated_height gtk_widget_get_height
+#endif

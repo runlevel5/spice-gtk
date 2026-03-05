@@ -424,8 +424,8 @@ spice_gtk_global_cflags += ['-DGLIB_VERSION_MIN_REQUIRED=@0@'.format(glib_encode
 
 if spice_gtk_has_gtk
   if spice_gtk_version == '4'
-    gtk_min_version = 'GDK_VERSION_4_0'
-    gtk_max_version = 'GDK_VERSION_4_10'
+    gtk_min_version = 'GDK_VERSION_4_14'
+    gtk_max_version = 'GDK_VERSION_4_14'
     spice_gtk_config_data.set('HAVE_GTK_4', '1')
     spice_gtk_global_cflags += ['-DGDK_VERSION_MIN_REQUIRED=@0@'.format(gtk_min_version),
                                 '-DGDK_VERSION_MAX_ALLOWED=@0@'.format(gtk_max_version)]
