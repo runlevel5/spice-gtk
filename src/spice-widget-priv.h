@@ -138,6 +138,7 @@ struct _SpiceDisplayPrivate {
     struct {
         gboolean            context_ready;
         gboolean            enabled;
+#if !GTK_CHECK_VERSION(4, 0, 0)
         EGLSurface          surface;
         EGLDisplay          display;
         EGLConfig           conf;
@@ -148,6 +149,9 @@ struct _SpiceDisplayPrivate {
         guint               tex_pointer_id;
         guint               prog;
         EGLImageKHR         image;
+#else
+        GdkTexture          *scanout_texture;
+#endif
         gboolean            call_draw_done;
         SpiceGlScanout2     scanout;
     } egl;

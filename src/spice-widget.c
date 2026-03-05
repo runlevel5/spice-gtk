@@ -689,7 +689,7 @@ static void grab_notify(SpiceDisplay *display, gboolean was_grabbed)
 }
 #endif
 
-#ifdef HAVE_EGL
+#if defined(HAVE_EGL) && !GTK_CHECK_VERSION(4, 0, 0)
 static gboolean
 gl_area_render(GtkGLArea *area, GdkGLContext *context, gpointer user_data)
 {
@@ -726,13 +726,22 @@ gl_area_realize(GtkGLArea *area, gpointer user_data)
 static void
 drawing_area_realize(GtkWidget *area, gpointer user_data)
 {
-#if defined(GDK_WINDOWING_X11) && defined(HAVE_EGL)
+#ifdef HAVE_EGL
     SpiceDisplay *display = SPICE_DISPLAY(user_data);
 
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* GTK4: the dmabuf texture path works on any backend */
+    if (spice_display_channel_get_gl_scanout2(display->priv->display) != NULL) {
+        spice_display_widget_gl_scanout(display);
+    }
+#else
+#ifdef GDK_WINDOWING_X11
     if (GDK_IS_X11_DISPLAY(gdk_display_get_default()) &&
         spice_display_channel_get_gl_scanout2(display->priv->display) != NULL) {
         spice_display_widget_gl_scanout(display);
     }
+#endif
+#endif
 #endif
 }
 
@@ -762,7 +771,7 @@ static void spice_display_init(SpiceDisplay *display)
     gtk_stack_add_named(d->stack, area, "draw-area");
     gtk_stack_set_visible_child(d->stack, area);
 
-#ifdef HAVE_EGL
+#if defined(HAVE_EGL) && !GTK_CHECK_VERSION(4, 0, 0)
     area = gtk_gl_area_new();
     gtk_gl_area_set_required_version(GTK_GL_AREA(area), 3, 2);
     gtk_gl_area_set_auto_render(GTK_GL_AREA(area), false);
@@ -1637,6 +1646,11 @@ static void set_egl_enabled(SpiceDisplay *display, bool enabled)
     if (egl_enabled(d) == enabled)
         return;
 
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* GTK4: always render through the draw-area using dmabuf textures;
+     * no GtkGLArea switching needed */
+    gtk_stack_set_visible_child_name(d->stack, "draw-area");
+#else
     gtk_stack_set_visible_child_name(d->stack,
                                      enabled ? "gl-area" : "draw-area");
 
@@ -1644,6 +1658,7 @@ static void set_egl_enabled(SpiceDisplay *display, bool enabled)
         gint scale_factor = gtk_widget_get_scale_factor(GTK_WIDGET(display));
         spice_egl_resize_display(display, d->ww * scale_factor, d->wh * scale_factor);
     }
+#endif
 
     d->egl.enabled = enabled;
 }
@@ -1655,11 +1670,63 @@ static gboolean draw_event_impl(SpiceDisplay *display, cairo_t *cr)
     g_return_val_if_fail(d != NULL, false);
 
 #ifdef HAVE_EGL
+#if GTK_CHECK_VERSION(4, 0, 0)
+    if (egl_enabled(d) && d->egl.scanout_texture != NULL) {
+        double s;
+        int x, y, w, h;
+        int tex_width, tex_height;
+        cairo_surface_t *surface;
+
+        spice_display_get_scaling(display, &s, &x, &y, &w, &h);
+
+        tex_width = gdk_texture_get_width(d->egl.scanout_texture);
+        tex_height = gdk_texture_get_height(d->egl.scanout_texture);
+
+        /* Download dmabuf texture to a Cairo image surface for painting */
+        surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
+                                             tex_width, tex_height);
+        gdk_texture_download(d->egl.scanout_texture,
+                             cairo_image_surface_get_data(surface),
+                             cairo_image_surface_get_stride(surface));
+        cairo_surface_mark_dirty(surface);
+
+        /* Clear background */
+        cairo_set_source_rgb(cr, 0, 0, 0);
+        cairo_paint(cr);
+
+        /* Paint the scanout texture scaled to the display area */
+        cairo_save(cr);
+        cairo_translate(cr, x, y);
+        cairo_scale(cr, (double)w / d->area.width, (double)h / d->area.height);
+
+        /* Handle y0top flag: if the scanout origin is NOT top-left, flip vertically */
+        if (!d->egl.scanout.y0top) {
+            cairo_translate(cr, 0, tex_height);
+            cairo_scale(cr, 1.0, -1.0);
+        }
+
+        /* Apply monitor area offset */
+        cairo_set_source_surface(cr, surface, -d->area.x, -d->area.y);
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
+        cairo_paint(cr);
+        cairo_restore(cr);
+
+        cairo_surface_destroy(surface);
+
+        if (d->egl.call_draw_done) {
+            spice_display_channel_gl_draw_done(d->display);
+            d->egl.call_draw_done = FALSE;
+        }
+
+        return true;
+    }
+#else
     if (egl_enabled(d) &&
         g_str_equal(gtk_stack_get_visible_child_name(d->stack), "draw-area")) {
         spice_egl_update_display(display);
         return false;
     }
+#endif
 #endif
 
     if (d->mark == 0 || d->canvas.data == NULL ||
@@ -3593,6 +3660,15 @@ void spice_display_widget_gl_scanout(SpiceDisplay *display)
 
     DISPLAY_DEBUG(display, "%s: got scanout",  __FUNCTION__);
 
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* GTK4: initialize the dmabuf texture backend if not already done */
+    if (!d->egl.context_ready) {
+        if (!spice_egl_init(display, &err)) {
+            g_critical("egl init failed: %s", err->message);
+            g_clear_error(&err);
+        }
+    }
+#else
 #ifdef GDK_WINDOWING_X11
     GtkWidget *area = gtk_stack_get_child_by_name(d->stack, "draw-area");
 
@@ -3613,6 +3689,7 @@ void spice_display_widget_gl_scanout(SpiceDisplay *display)
         spice_egl_resize_display(display, d->ww * scale_factor, d->wh * scale_factor);
     }
 #endif
+#endif /* GTK4 */
 
     set_egl_enabled(display, true);
 
@@ -3634,7 +3711,6 @@ static void gl_draw(SpiceDisplay *display,
                     guint32 x, guint32 y, guint32 w, guint32 h)
 {
     SpiceDisplayPrivate *d = display->priv;
-    GtkWidget *gl;
 
     DISPLAY_DEBUG(display, "%s",  __FUNCTION__);
 
@@ -3646,15 +3722,24 @@ static void gl_draw(SpiceDisplay *display,
         return;
     }
 
-    gl = gtk_stack_get_child_by_name(d->stack, "gl-area");
+#if GTK_CHECK_VERSION(4, 0, 0)
+    /* GTK4: queue a redraw on the draw-area; the draw callback will paint
+     * the scanout_texture and call gl_draw_done */
+    d->egl.call_draw_done = TRUE;
+    spice_display_queue_draw(display);
+#else
+    {
+        GtkWidget *gl = gtk_stack_get_child_by_name(d->stack, "gl-area");
 
-    if (gtk_stack_get_visible_child(d->stack) == gl) {
-        gtk_gl_area_queue_render(GTK_GL_AREA(gl));
-        d->egl.call_draw_done = TRUE;
-    } else {
-        spice_egl_update_display(display);
-        spice_display_channel_gl_draw_done(d->display);
+        if (gtk_stack_get_visible_child(d->stack) == gl) {
+            gtk_gl_area_queue_render(GTK_GL_AREA(gl));
+            d->egl.call_draw_done = TRUE;
+        } else {
+            spice_egl_update_display(display);
+            spice_display_channel_gl_draw_done(d->display);
+        }
     }
+#endif
 }
 #else
 static void spice_display_widget_gl_scanout(SpiceDisplay *display)
@@ -3892,6 +3977,22 @@ GdkPixbuf *spice_display_get_pixbuf(SpiceDisplay *display)
 
 #ifdef HAVE_EGL
     if (egl_enabled(d)) {
+#if GTK_CHECK_VERSION(4, 0, 0)
+        if (d->egl.scanout_texture != NULL) {
+            int tex_w = gdk_texture_get_width(d->egl.scanout_texture);
+            int tex_h = gdk_texture_get_height(d->egl.scanout_texture);
+
+            data = g_malloc0(tex_w * tex_h * 4);
+            gdk_texture_download(d->egl.scanout_texture, data, tex_w * 4);
+
+            pixbuf = gdk_pixbuf_new_from_data(data, GDK_COLORSPACE_RGB, true,
+                                               8, tex_w, tex_h,
+                                               tex_w * 4,
+                                               (GdkPixbufDestroyNotify)g_free, NULL);
+        } else {
+            g_return_val_if_reached(NULL);
+        }
+#else
         GdkPixbuf *tmp;
 
         data = g_malloc0(d->area.width * d->area.height * 4);
@@ -3905,6 +4006,7 @@ GdkPixbuf *spice_display_get_pixbuf(SpiceDisplay *display)
                                        (GdkPixbufDestroyNotify)g_free, NULL);
         pixbuf = gdk_pixbuf_flip(tmp, false);
         g_object_unref(tmp);
+#endif
     } else
 #endif
     {
