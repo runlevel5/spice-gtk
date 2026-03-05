@@ -32,3 +32,4 @@ guint16 vnc_display_keymap_gdk2xtkbd(const guint16 *keycode_map,
 void vnc_display_keyval_set_entries(void);
 void vnc_display_keyval_free_entries(void);
 guint vnc_display_keyval_from_keycode(guint keycode, guint keyval);
+guint16 vnc_display_keymap_keyval2xtkbd(guint keyval);

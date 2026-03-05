@@ -73,6 +73,10 @@ static unsigned int ref_count_for_untranslated_keys = 0;
 #endif
 #endif
 
+/* X11 keysym-to-XT scancode table, used by Broadway backend and as
+ * a fallback when gdk_display_map_keyval() fails to resolve a keyval */
+#include "vncdisplaykeymap_x112xtkbd.h"
+
 #if defined(GDK_WINDOWING_X11) || defined(GDK_WINDOWING_WAYLAND)
 /* Xorg Linux + evdev (offset evdev keycodes) */
 #include "vncdisplaykeymap_xorgevdev2xtkbd.h"
@@ -116,8 +120,7 @@ static unsigned int ref_count_for_untranslated_keys = 0;
 #endif
 
 #ifdef GDK_WINDOWING_BROADWAY
-/* X11 keysyms */
-#include "vncdisplaykeymap_x112xtkbd.h"
+/* keymap_x112xtkbd already included above */
 #endif
 
 #ifdef GDK_WINDOWING_X11
@@ -308,12 +311,25 @@ guint vnc_display_keyval_from_keycode(guint keycode, guint keyval)
 {
 	size_t i;
 	for (i = 0; i < sizeof(untranslated_keys) / sizeof(untranslated_keys[0]); i++) {
-		if (keycode == untranslated_keys[i].keys[0].keycode) {
+		if (untranslated_keys[i].keys != NULL &&
+		    keycode == untranslated_keys[i].keys[0].keycode) {
 			return untranslated_keys[i].keyval;
 		}
 	}
 
 	return keyval;
+}
+
+/* Look up an XT scancode directly from an X11 keysym (GDK keyval).
+ * This bypasses the GDK keymap entirely, using the static
+ * keymap_x112xtkbd table generated from keymaps.csv.  Useful as a
+ * fallback when gdk_display_map_keyval() cannot resolve a keyval
+ * (e.g. Alt_L on XQuartz where Option maps to Meta instead). */
+guint16 vnc_display_keymap_keyval2xtkbd(guint keyval)
+{
+	if (keyval >= G_N_ELEMENTS(keymap_x112xtkbd))
+		return 0;
+	return keymap_x112xtkbd[keyval];
 }
 /*
  * Local variables:

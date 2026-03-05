@@ -2177,17 +2177,27 @@ static guint get_scancode_from_keyval(SpiceDisplay *display, guint keyval)
     guint keycode = 0;
     GdkKeymapKey *keys = NULL;
     gint n_keys = 0;
+    guint scancode;
 
-    if (spice_compat_map_keyval(keyval, &keys, &n_keys)) {
+    if (spice_compat_map_keyval(keyval, &keys, &n_keys) && n_keys > 0 && keys != NULL) {
         /* FIXME what about levels? */
         keycode = keys[0].keycode;
         g_free(keys);
+        scancode = vnc_display_keymap_gdk2xtkbd(d->keycode_map, d->keycode_maplen, keycode);
+        if (scancode != 0)
+            return scancode;
     } else {
-        g_warning("could not lookup keyval %u, please report a bug", keyval);
-        return 0;
+        g_free(keys);
     }
 
-    return vnc_display_keymap_gdk2xtkbd(d->keycode_map, d->keycode_maplen, keycode);
+    /* Fallback: look up the keyval directly in the X11 keysym-to-XT
+     * scancode table.  This handles cases where gdk_display_map_keyval()
+     * fails (e.g. Alt_L over XQuartz X11 forwarding) or where the
+     * platform keycode map has no entry for this key. */
+    scancode = vnc_display_keymap_keyval2xtkbd(keyval);
+    if (scancode == 0)
+        g_warning("could not lookup keyval %u, please report a bug", keyval);
+    return scancode;
 }
 
 
