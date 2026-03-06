@@ -695,15 +695,7 @@ static void spice_display_init(SpiceDisplay *display)
     gtk_label_set_selectable(GTK_LABEL(d->label), true);
     gtk_stack_add_named(d->stack, d->label, "label");
 
-    gtk_widget_show(GTK_WIDGET(d->stack));
-    gtk_widget_show(d->label);
-    {
-        GList *children = gtk_container_get_children(GTK_CONTAINER(d->stack));
-        for (GList *l = children; l != NULL; l = l->next)
-            gtk_widget_show(GTK_WIDGET(l->data));
-        g_list_free(children);
-    }
-    gtk_widget_show(widget);
+    gtk_widget_show_all(widget);
 
     g_signal_connect(display, "grab-broken-event", G_CALLBACK(grab_broken), NULL);
     g_signal_connect(display, "grab-notify", G_CALLBACK(grab_notify), NULL);
@@ -1478,8 +1470,21 @@ static void set_egl_enabled(SpiceDisplay *display, bool enabled)
     if (egl_enabled(d) == enabled)
         return;
 
-    gtk_stack_set_visible_child_name(d->stack,
-                                     enabled ? "gl-area" : "draw-area");
+#ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_DISPLAY(gdk_display_get_default())) {
+        /* even though the function is marked as deprecated, it's the
+         * only way I found to prevent glitches when the window is
+         * resized. */
+        GtkWidget *area = gtk_stack_get_child_by_name(d->stack, "draw-area");
+        G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+        gtk_widget_set_double_buffered(GTK_WIDGET(area), !enabled);
+        G_GNUC_END_IGNORE_DEPRECATIONS
+    } else
+#endif
+    {
+        gtk_stack_set_visible_child_name(d->stack,
+                                         enabled ? "gl-area" : "draw-area");
+    }
 
     if (enabled && d->egl.context_ready) {
         gint scale_factor = gtk_widget_get_scale_factor(GTK_WIDGET(display));

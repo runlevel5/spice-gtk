@@ -94,7 +94,7 @@ static SpiceCursorShape *spice_cursor_shape_copy(const SpiceCursorShape *cursor)
 
     new_cursor = g_new(SpiceCursorShape, 1);
     *new_cursor = *cursor;
-    new_cursor->data = g_memdup2(cursor->data, cursor->width * cursor->height * 4);
+    new_cursor->data = g_memdup(cursor->data, cursor->width * cursor->height * 4);
 
     return new_cursor;
 }
@@ -503,7 +503,7 @@ static void emit_cursor_set(SpiceChannel *channel, display_cursor *cursor)
     c->last_cursor.hot_spot_x = cursor->hdr.hot_spot_x;
     c->last_cursor.hot_spot_y = cursor->hdr.hot_spot_y;
     g_free(c->last_cursor.data);
-    c->last_cursor.data = g_memdup2(cursor->data,
+    c->last_cursor.data = g_memdup(cursor->data,
                                    cursor->hdr.width * cursor->hdr.height * 4);
 
     g_coroutine_object_notify(G_OBJECT(channel), "cursor");

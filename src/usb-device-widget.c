@@ -189,9 +189,7 @@ spice_usb_device_widget_show_info_bar(SpiceUsbDeviceWidget *self,
     gtk_widget_set_margin_start(info_bar, 12);
     gtk_widget_set_halign(info_bar, GTK_ALIGN_FILL);
     gtk_box_pack_start(GTK_BOX(self), priv->info_bar, FALSE, FALSE, 0);
-    gtk_widget_show(widget);
-    gtk_widget_show(hbox);
-    gtk_widget_show(priv->info_bar);
+    gtk_widget_show_all(priv->info_bar);
 }
 
 static void
@@ -249,7 +247,7 @@ static void spice_usb_device_widget_add_empty_cd(SpiceUsbDeviceWidget *self)
 
     gtk_widget_set_margin_start(empty_cd, 12);
     gtk_box_pack_end(GTK_BOX(self), empty_cd, FALSE, FALSE, 0);
-    gtk_widget_show(empty_cd);
+    gtk_widget_show_all(empty_cd);
 
     priv->empty_cd = empty_cd;
 }
@@ -634,7 +632,7 @@ static void device_added_cb(SpiceUsbDeviceManager *manager,
     }
 
     spice_usb_device_widget_update_status(self);
-    gtk_widget_show(check);
+    gtk_widget_show_all(check);
 }
 
 static void destroy_widget_by_usb_device(GtkWidget *widget, gpointer user_data)
