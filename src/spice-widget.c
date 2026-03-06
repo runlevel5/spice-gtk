@@ -82,7 +82,7 @@
  * save to disk).
  */
 
-G_DEFINE_TYPE_WITH_PRIVATE(SpiceDisplay, spice_display, GTK_TYPE_BOX)
+G_DEFINE_TYPE_WITH_PRIVATE(SpiceDisplay, spice_display, GTK_TYPE_EVENT_BOX)
 
 /* Properties */
 enum {
@@ -520,8 +520,10 @@ static gboolean grab_broken(SpiceDisplay *self, GdkEventGrabBroken *event,
     DISPLAY_DEBUG(self, "%s (SpiceDisplay::GdkWindow %p, event->grab_window: %p)",
                   __FUNCTION__, window, event->grab_window);
     if (window == event->grab_window) {
-        /* ignore grab-broken event moving the grab to our own window,
-         * see https://bugzilla.gnome.org/show_bug.cgi?id=769635
+        /* ignore grab-broken event moving the grab to GtkEventBox::window
+         * (from GtkEventBox::event_window) as we initially called
+         * gdk_pointer_grab() on GtkEventBox::window, see
+         * https://bugzilla.gnome.org/show_bug.cgi?id=769635
          */
         return false;
     }
@@ -723,6 +725,7 @@ static void spice_display_init(SpiceDisplay *display)
                           GDK_SMOOTH_SCROLL_MASK |
                           GDK_SCROLL_MASK);
     gtk_widget_set_can_focus(widget, true);
+    gtk_event_box_set_above_child(GTK_EVENT_BOX(widget), true);
 
     d->grabseq = spice_grab_sequence_new_from_string("Control_L+Alt_L");
     d->activeseq = g_new0(gboolean, d->grabseq->nkeysyms);
