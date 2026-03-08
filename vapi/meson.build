@@ -12,4 +12,13 @@ if spice_gtk_has_vala
                         vapi_dirs : meson.current_build_dir(),
                         sources : spice_client_gtk_gir[0])
   endif
+
+  if spice_gtk_has_gtk4
+    gnome.generate_vapi('spice-client-gtk-4.0',
+                        install : true,
+                        packages : ['gtk4', 'gstreamer-1.0', spice_glib_vapi],
+                        gir_dirs : meson.project_build_root() / 'src' / 'gtk4',
+                        vapi_dirs : meson.current_build_dir(),
+                        sources : spice_client_gtk4_gir[0])
+  endif
 endif

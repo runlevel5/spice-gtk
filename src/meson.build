@@ -445,6 +445,7 @@ if spice_gtk_has_gtk
   spice_client_gtk_lib = library('spice-client-gtk-3.0', spice_client_gtk_sources,
                                  version : spice_client_gtk_so_version,
                                  install : true,
+                                 c_args : spice_gtk3_version_cflags,
                                  link_args : [spice_gtk_version_script],
                                  link_depends : spice_client_gtk_syms,
                                  dependencies : [spice_client_glib_dep, spice_gtk_deps, spice_wayland_deps],

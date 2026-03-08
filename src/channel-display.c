@@ -1104,7 +1104,10 @@ static void destroy_canvas(display_surface *surface)
     jpeg_decoder_destroy(surface->jpeg_decoder);
 
     g_clear_pointer(&surface->data, g_free);
-    g_clear_pointer(&surface->canvas, surface->canvas->ops->destroy);
+    if (surface->canvas && surface->canvas->ops)
+        g_clear_pointer(&surface->canvas, surface->canvas->ops->destroy);
+    else
+        surface->canvas = NULL;
 }
 
 static display_surface *find_surface(SpiceDisplayChannelPrivate *c, guint32 surface_id)

@@ -4,7 +4,7 @@ variables:
   DEPS_COMMON: git make python3 redhat-rpm-config python3-pyparsing meson
                ninja-build gtk-doc glib2-devel gettext gettext-devel gcc
 
-  DEPS_FEDORA: zlib-devel openssl-devel intltool gtk3-devel
+  DEPS_FEDORA: zlib-devel openssl-devel intltool gtk3-devel gtk4-devel
                gobject-introspection-devel cyrus-sasl-devel
                pulseaudio-libs-devel libjpeg-turbo-devel
                libacl-devel gstreamer1-devel gstreamer1-plugins-base-devel
@@ -48,6 +48,10 @@ fedora:
     - meson setup --buildtype=release build-feat-disabled -Dauto_features=disabled --werror
     - ninja -C build-feat-disabled
     - ninja -C build-feat-disabled test
+
+    - meson setup --buildtype=release build-gtk4 -Dgtk4=enabled --werror
+    - ninja -C build-gtk4
+    - ninja -C build-gtk4 test
 
 windows:
   artifacts:
