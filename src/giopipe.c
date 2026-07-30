@@ -213,9 +213,7 @@ pipe_input_stream_dispose(GObject *object)
 
     self = PIPE_INPUT_STREAM(object);
 
-    if (self->peer) {
-        g_clear_weak_pointer(&self->peer);
-    }
+    g_clear_weak_pointer(&self->peer);
 
     g_clear_list(&self->sources, (GDestroyNotify) g_source_unref);
 
@@ -331,9 +329,7 @@ pipe_output_stream_dispose(GObject *object)
 
     self = PIPE_OUTPUT_STREAM(object);
 
-    if (self->peer) {
-        g_clear_weak_pointer(&self->peer);
-    }
+    g_clear_weak_pointer(&self->peer);
 
     g_clear_list(&self->sources, (GDestroyNotify) g_source_unref);
 
