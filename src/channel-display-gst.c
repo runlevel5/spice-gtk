@@ -364,16 +364,10 @@ static void free_pipeline(SpiceGstDecoder *decoder)
     }
 
     gst_element_set_state(decoder->pipeline, GST_STATE_NULL);
-    gst_object_unref(decoder->appsrc);
-    decoder->appsrc = NULL;
-    if (decoder->appsink) {
-        gst_object_unref(decoder->appsink);
-        decoder->appsink = NULL;
-    }
-    gst_object_unref(decoder->clock);
-    decoder->clock = NULL;
-    gst_object_unref(decoder->pipeline);
-    decoder->pipeline = NULL;
+    g_clear_pointer(&decoder->appsrc, gst_object_unref);
+    g_clear_pointer(&decoder->appsink, gst_object_unref);
+    g_clear_pointer(&decoder->clock, gst_object_unref);
+    g_clear_pointer(&decoder->pipeline, gst_object_unref);
     decoder->is_hw_pipeline = false;
 }
 
@@ -526,8 +520,7 @@ static gchar *find_best_hw_plugin(const gchar *dec_name)
                        g_strconcat(plugins[i], dec_name, "dec", NULL);
         feature = gst_registry_lookup_feature(registry, feature_name);
         if (!feature) {
-            g_free(feature_name);
-            feature_name = NULL;
+            g_clear_pointer(&feature_name, g_free);
             continue;
         }
         gst_object_unref(feature);
@@ -683,14 +676,8 @@ static bool try_intel_hw_pipeline(SpiceGstDecoder *decoder)
     return launch_pipeline(decoder);
 
 err:
-    if (decoder->appsink) {
-        gst_object_unref(decoder->appsink);
-        decoder->appsink = NULL;
-    }
-    if (decoder->appsrc) {
-        gst_object_unref(decoder->appsrc);
-        decoder->appsrc = NULL;
-    }
+    g_clear_pointer(&decoder->appsink, gst_object_unref);
+    g_clear_pointer(&decoder->appsrc, gst_object_unref);
     if (pipeline) {
         gst_object_unref(pipeline);
     }

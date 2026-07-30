@@ -484,10 +484,7 @@ static void spice_display_dispose(GObject *obj)
     g_clear_object(&d->session);
     d->gtk_session = NULL;
 
-    if (d->key_delayed_id) {
-        g_source_remove(d->key_delayed_id);
-        d->key_delayed_id = 0;
-    }
+    g_clear_handle_id(&d->key_delayed_id, g_source_remove);
 
     G_OBJECT_CLASS(spice_display_parent_class)->dispose(obj);
 }
@@ -1011,7 +1008,7 @@ static void try_keyboard_ungrab(SpiceDisplay *display)
     DISPLAY_DEBUG(display, "ungrab keyboard");
     ungrab_keyboard(display);
 #ifdef G_OS_WIN32
-    // do not use g_clear_pointer as Windows API have different linkage
+    /* gobject-linter-ignore-next-line: use_clear_functions */
     if (d->keyboard_hook) {
         UnhookWindowsHookEx(d->keyboard_hook);
         d->keyboard_hook = NULL;
@@ -1573,10 +1570,7 @@ static void key_press_and_release(SpiceDisplay *display)
     spice_inputs_channel_key_press_and_release(d->inputs, d->key_delayed_scancode);
     d->key_delayed_scancode = 0;
 
-    if (d->key_delayed_id) {
-        g_source_remove(d->key_delayed_id);
-        d->key_delayed_id = 0;
-    }
+    g_clear_handle_id(&d->key_delayed_id, g_source_remove);
 }
 
 static gboolean key_press_delayed(gpointer data)
@@ -1590,10 +1584,7 @@ static gboolean key_press_delayed(gpointer data)
     spice_inputs_channel_key_press(d->inputs, d->key_delayed_scancode);
     d->key_delayed_scancode = 0;
 
-    if (d->key_delayed_id) {
-        g_source_remove(d->key_delayed_id);
-        d->key_delayed_id = 0;
-    }
+    g_clear_handle_id(&d->key_delayed_id, g_source_remove);
 
     return G_SOURCE_REMOVE;
 }
