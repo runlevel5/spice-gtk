@@ -344,10 +344,9 @@ static void *usbredir_alloc_lock(void)
 
 static void usbredir_free_lock(void *user_data)
 {
-    GMutex *mutex = user_data;
+    g_autofree GMutex *mutex = user_data;
 
     g_mutex_clear(mutex);
-    g_free(mutex);
 }
 
 static void usbredir_lock_lock(void *user_data)
@@ -1447,12 +1446,11 @@ gchar *spice_usb_backend_device_get_description(SpiceUsbDevice *dev,
 void spice_usb_backend_device_report_change(SpiceUsbBackend *be,
                                             SpiceUsbDevice *dev)
 {
-    gchar *desc;
+    g_autofree gchar *desc = NULL;
     g_return_if_fail(dev && dev->edev);
 
     desc = device_ops(dev->edev)->get_product_description(dev->edev);
     SPICE_DEBUG("%s: %s", __FUNCTION__, desc);
-    g_free(desc);
 }
 
 void spice_usb_backend_device_eject(SpiceUsbBackend *be, SpiceUsbDevice *dev)
@@ -1474,7 +1472,7 @@ spice_usb_backend_create_emulated_device(SpiceUsbBackend *be,
                                          GError **err)
 {
     SpiceUsbEmulatedDevice *edev;
-    SpiceUsbDevice *dev;
+    g_autoptr(SpiceUsbDevice) dev = NULL;
     struct libusb_device_descriptor *desc;
     uint16_t device_desc_size;
     uint8_t address = 0;
@@ -1500,7 +1498,6 @@ spice_usb_backend_create_emulated_device(SpiceUsbBackend *be,
 
     dev->edev = edev = create_proc(be, dev, create_params, err);
     if (edev == NULL) {
-        spice_usb_backend_device_unref(dev);
         return FALSE;
     }
 
@@ -1508,7 +1505,6 @@ spice_usb_backend_create_emulated_device(SpiceUsbBackend *be,
                                           (void **)&desc, &device_desc_size)
         || device_desc_size != sizeof(*desc)) {
 
-        spice_usb_backend_device_unref(dev);
         g_set_error(err, SPICE_CLIENT_ERROR, SPICE_CLIENT_ERROR_FAILED,
                     _("can't create device - internal error"));
         return FALSE;
@@ -1526,7 +1522,6 @@ spice_usb_backend_create_emulated_device(SpiceUsbBackend *be,
     if (be->hotplug_callback) {
         be->hotplug_callback(be->hotplug_user_data, dev, TRUE);
     }
-    spice_usb_backend_device_unref(dev);
 
     return TRUE;
 }
