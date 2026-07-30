@@ -620,7 +620,7 @@ static void spice_display_send_client_preferred_video_codecs(SpiceChannel *chann
                                                              const gint *codecs, gsize ncodecs)
 {
     SpiceMsgOut *out;
-    SpiceMsgcDisplayPreferredVideoCodecType *msg;
+    g_autofree SpiceMsgcDisplayPreferredVideoCodecType *msg = NULL;
     int i;
 
     msg = g_malloc0(sizeof(SpiceMsgcDisplayPreferredVideoCodecType) +
@@ -636,7 +636,6 @@ static void spice_display_send_client_preferred_video_codecs(SpiceChannel *chann
     out = spice_msg_out_new(channel, SPICE_MSGC_DISPLAY_PREFERRED_VIDEO_CODEC_TYPE);
     out->marshallers->msgc_display_preferred_video_codec_type(out->marshaller, msg);
     spice_msg_out_send_internal(out);
-    g_free(msg);
 }
 
 /**
@@ -707,7 +706,7 @@ gboolean spice_display_channel_change_preferred_video_codec_types(SpiceChannel *
                                                                   GError **err)
 {
     gsize i;
-    GString *msg;
+    g_autoptr(GString) msg = NULL;
 
     g_return_val_if_fail(SPICE_IS_DISPLAY_CHANNEL(channel), FALSE);
     g_return_val_if_fail(ncodecs != 0, FALSE);
@@ -726,7 +725,6 @@ gboolean spice_display_channel_change_preferred_video_codec_types(SpiceChannel *
 
         if (codec_type < SPICE_VIDEO_CODEC_TYPE_MJPEG ||
             codec_type >= SPICE_VIDEO_CODEC_TYPE_ENUM_END) {
-            g_string_free(msg, TRUE);
             g_set_error(err, SPICE_CLIENT_ERROR, SPICE_CLIENT_ERROR_FAILED,
                         _("Invalid codec-type found (%d) ... "), codec_type);
 
@@ -737,7 +735,6 @@ gboolean spice_display_channel_change_preferred_video_codec_types(SpiceChannel *
 
     }
     CHANNEL_DEBUG(channel, "%s", msg->str);
-    g_string_free(msg, TRUE);
 
     spice_display_send_client_preferred_video_codecs(channel, codecs, ncodecs);
 
@@ -960,7 +957,6 @@ static SpiceImageSurfacesOps image_surfaces_ops = {
 
 static void spice_display_channel_set_capabilities(SpiceChannel *channel)
 {
-    SpiceSession *s = spice_channel_get_session(channel);
     guint i;
 
     spice_channel_set_capability(channel, SPICE_DISPLAY_CAP_SIZED_STREAM);
@@ -973,10 +969,12 @@ static void spice_display_channel_set_capabilities(SpiceChannel *channel)
     if (SPICE_DISPLAY_CHANNEL(channel)->priv->enable_adaptive_streaming) {
         spice_channel_set_capability(channel, SPICE_DISPLAY_CAP_STREAM_REPORT);
     }
-    if (spice_session_get_gl_scanout_enabled(s)) {
+#ifdef G_OS_UNIX
+    if (spice_session_get_gl_scanout_enabled(spice_channel_get_session(channel))) {
         spice_channel_set_capability(channel, SPICE_DISPLAY_CAP_GL_SCANOUT);
         spice_channel_set_capability(channel, SPICE_DISPLAY_CAP_GL_SCANOUT2);
     }
+#endif
     spice_channel_set_capability(channel, SPICE_DISPLAY_CAP_MULTI_CODEC);
 #ifdef HAVE_BUILTIN_MJPEG
     spice_channel_set_capability(channel, SPICE_DISPLAY_CAP_CODEC_MJPEG);
@@ -993,10 +991,9 @@ static void spice_display_channel_set_capabilities(SpiceChannel *channel)
 
 static void destroy_surface(gpointer data)
 {
-    display_surface *surface = data;
+    g_autofree display_surface *surface = data;
 
     destroy_canvas(surface);
-    g_free(surface);
 }
 
 static void spice_display_channel_init(SpiceDisplayChannel *channel)
@@ -1842,7 +1839,7 @@ static void display_handle_stream_clip(SpiceChannel *channel, SpiceMsgIn *in)
 
 static void display_stream_destroy(gpointer st_pointer)
 {
-    display_stream *st = st_pointer;
+    g_autofree display_stream *st = st_pointer;
 
     display_stream_stats_debug(st);
     g_array_free(st->drops_seqs_stats_arr, TRUE);
@@ -1850,8 +1847,6 @@ static void display_stream_destroy(gpointer st_pointer)
     if (st->video_decoder) {
         st->video_decoder->destroy(st->video_decoder);
     }
-
-    g_free(st);
 }
 
 static void clear_streams(SpiceChannel *channel)
