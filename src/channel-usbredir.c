@@ -350,14 +350,14 @@ void spice_usbredir_channel_connect_device_async(SpiceUsbredirChannel *channel,
         g_task_return_new_error(task,
                             SPICE_CLIENT_ERROR, SPICE_CLIENT_ERROR_FAILED,
                             "Error libusb context not set");
-        goto done;
+        return;
     }
 
     if (priv->state != STATE_DISCONNECTED) {
         g_task_return_new_error(task,
                             SPICE_CLIENT_ERROR, SPICE_CLIENT_ERROR_FAILED,
                             "Error channel is busy");
-        goto done;
+        return;
     }
 
     priv->device = spice_usb_backend_device_ref(device);
@@ -379,7 +379,6 @@ void spice_usbredir_channel_connect_device_async(SpiceUsbredirChannel *channel,
 #endif
     g_task_run_in_thread(task, _open_device_async_cb);
 
-done:
     g_object_unref(task);
 }
 
