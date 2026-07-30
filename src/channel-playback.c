@@ -135,9 +135,6 @@ static void spice_playback_channel_get_property(GObject    *gobject,
     case PROP_MIN_LATENCY:
         g_value_set_uint(value, c->min_latency);
         break;
-    default:
-        G_OBJECT_WARN_INVALID_PROPERTY_ID(gobject, prop_id, pspec);
-        break;
     }
 }
 
@@ -156,9 +153,6 @@ static void spice_playback_channel_set_property(GObject      *gobject,
     case PROP_MIN_LATENCY:
     case PROP_NCHANNELS:
         g_assert_not_reached();
-        break;
-    default:
-        G_OBJECT_WARN_INVALID_PROPERTY_ID(gobject, prop_id, pspec);
         break;
     }
 }
