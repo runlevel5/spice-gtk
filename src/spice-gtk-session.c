@@ -1603,7 +1603,9 @@ void spice_gtk_session_request_auto_usbredir(SpiceGtkSession *self,
         if (s->auto_usbredir_reqs != 1)
             return;
     } else {
-        g_return_if_fail(s->auto_usbredir_reqs > 0);
+        if (s->auto_usbredir_reqs == 0) {
+            return;
+        }
         s->auto_usbredir_reqs--;
         if (s->auto_usbredir_reqs != 0)
             return;
