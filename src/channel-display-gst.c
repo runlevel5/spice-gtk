@@ -636,23 +636,26 @@ static bool try_intel_hw_pipeline(SpiceGstDecoder *decoder)
         goto err;
     }
 
+    gboolean linked;
+
     if (use_parser) {
         gst_bin_add_many(GST_BIN(pipeline), src, parser, hw_decoder,
                          vpp, sink, NULL);
-        src = parser = hw_decoder = vpp = sink = NULL;
-        if (!gst_element_link_many(src, parser, hw_decoder, vpp,
-                                   sink, NULL)) {
-            spice_warning("error linking elements");
-            goto err;
-        }
+        linked = gst_element_link_many(src, parser, hw_decoder, vpp,
+                                       sink, NULL);
     } else {
         gst_bin_add_many(GST_BIN(pipeline), src, hw_decoder,
                          vpp, sink, NULL);
-        src = hw_decoder = vpp = sink = NULL;
-        if (!gst_element_link_many(src, hw_decoder, vpp, sink, NULL)) {
-            spice_warning("error linking elements");
-            goto err;
-        }
+        linked = gst_element_link_many(src, hw_decoder, vpp, sink, NULL);
+    }
+
+    /* The pipeline owns the elements now. This must happen after linking,
+     * which needs the pointers.
+     */
+    src = parser = hw_decoder = vpp = sink = NULL;
+    if (!linked) {
+        spice_warning("error linking elements");
+        goto err;
     }
 
     decoder->pipeline = g_steal_pointer(&pipeline);
