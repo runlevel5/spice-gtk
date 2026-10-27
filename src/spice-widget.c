@@ -49,6 +49,9 @@
 #define MAPVK_VK_TO_VSC 0
 #endif
 #endif
+#ifdef GDK_WINDOWING_QUARTZ
+#include <gdk/gdkquartz.h>
+#endif
 
 #include "spice-widget.h"
 #include "spice-widget-priv.h"
@@ -1898,6 +1901,20 @@ static gboolean key_event(GtkWidget *widget, GdkEventKey *key)
             break;
         }
         break;
+    }
+#endif
+
+#ifdef GDK_WINDOWING_QUARTZ
+    /* macOS reports the Caps Lock state rather than the key: GDK sends a
+     * press when the lock turns on and a release when it turns off. Sent as
+     * they come, the guest sees one long hold and toggles only on the
+     * first, and turns off only once the lock state is synced later. Send
+     * each change as a whole keystroke, which toggles the guest right away. */
+    if (key->keyval == GDK_KEY_Caps_Lock &&
+        GDK_IS_QUARTZ_DISPLAY(gtk_widget_get_display(widget))) {
+        send_key(display, scancode, SEND_KEY_PRESS, FALSE);
+        send_key(display, scancode, SEND_KEY_RELEASE, FALSE);
+        return true;
     }
 #endif
 
