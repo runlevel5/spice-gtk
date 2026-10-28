@@ -2677,6 +2677,7 @@ reconnect:
             c->event = SPICE_CHANNEL_ERROR_TLS;
             goto cleanup;
         }
+	SSL_set_read_ahead(c->ssl, 1);
 
 
         BIO *bio = bio_new_giostream(G_IO_STREAM(c->conn));
