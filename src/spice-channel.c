@@ -47,6 +47,12 @@
 
 #include "gio-coroutine.h"
 
+#include <spice/start-packed.h>
+struct SPICE_ATTR_PACKED uint32_unaligned_t {
+    uint32_t v;
+};
+#include <spice/end-packed.h>
+
 G_STATIC_ASSERT(sizeof(SpiceChannelClass) == sizeof(GObjectClass) + 19 * sizeof(gpointer));
 
 static void spice_channel_handle_msg(SpiceChannel *channel, SpiceMsgIn *msg);
@@ -1358,7 +1364,7 @@ static void spice_channel_send_link(SpiceChannel *channel)
 {
     SpiceChannelPrivate *c = channel->priv;
     uint8_t *buffer, *p;
-    uint32_t *caps;
+    struct uint32_unaligned_t *caps;
     int protocol, i;
     SpiceLinkMess link_msg;
 
@@ -1404,12 +1410,12 @@ static void spice_channel_send_link(SpiceChannel *channel)
     memcpy(p, &link_msg, sizeof(link_msg));
     p += sizeof(link_msg);
 
-    caps = SPICE_UNALIGNED_CAST(uint32_t *,p);
+    caps = (struct uint32_unaligned_t *)p;
     for (i = 0; i < c->common_caps->len; i++) {
-        *caps++ = GUINT32_TO_LE(g_array_index(c->common_caps, uint32_t, i));
+        (caps++)->v = GUINT32_TO_LE(g_array_index(c->common_caps, uint32_t, i));
     }
     for (i = 0; i < c->caps->len; i++) {
-        *caps++ = GUINT32_TO_LE(g_array_index(c->caps, uint32_t, i));
+        (caps++)->v = GUINT32_TO_LE(g_array_index(c->caps, uint32_t, i));
     }
     p = (uint8_t *) caps;
     CHANNEL_DEBUG(channel, "channel type %d id %d num common caps %u num caps %u",

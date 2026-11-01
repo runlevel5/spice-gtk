@@ -1,5 +1,6 @@
 tests_sources = [
   'util.c',
+  'channel-link.c',
   'coroutine.c',
   'session.c',
   'uri.c',
