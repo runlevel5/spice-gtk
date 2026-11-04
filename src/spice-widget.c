@@ -483,6 +483,14 @@ static void spice_display_dispose(GObject *obj)
 
     DISPLAY_DEBUG(display, "spice display dispose");
 
+    /* Release grabs while the GdkWindow is still alive. On Wayland, GDK
+     * keeps the grab cursor attached to the GdkSeat until gdk_seat_ungrab();
+     * otherwise destroying a grabbed widget leaves the pointer invisible. */
+    if (gtk_widget_get_realized(GTK_WIDGET(display))) {
+        try_mouse_ungrab(display);
+        try_keyboard_ungrab(display);
+    }
+
     spice_cairo_image_destroy(display);
     g_clear_object(&d->session);
     d->gtk_session = NULL;
@@ -2401,6 +2409,11 @@ static void realize(GtkWidget *widget)
 static void unrealize(GtkWidget *widget)
 {
     SpiceDisplay *display = SPICE_DISPLAY(widget);
+
+    /* The widget can be unrealized (e.g. when unparented) without being
+     * destroyed: release any grab now, before the GdkWindow goes away. */
+    try_mouse_ungrab(display);
+    try_keyboard_ungrab(display);
 
     spice_cairo_image_destroy(display);
 #ifdef HAVE_EGL
