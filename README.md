@@ -18,12 +18,18 @@ Project content
 
 * **libspice-client-gtk-3.0**
 
-    provides gtk widget to show spice display and accept user input.
+    Provides a GTK 3 widget to show spice display and accept user input.
     * SpiceDisplay (see spice-widget.h)
+
+* **libspice-client-gtk-4.0** *(optional)*
+
+    Provides a GTK 4 widget with the same API surface, built from
+    native GTK 4 code in `src/gtk4/`.  Enable with `-Dgtk4=enabled`.
+    Can be built alongside the GTK 3 library.
 
 * **spicy**
 
-   a gtk test client. The recommended client for end user is
+   A GTK 3 test client. The recommended client for end user is
    [virt-viewer]
 
 * **spicy-screenshot**
@@ -40,6 +46,22 @@ Project content
 
 [virt-viewer]: https://pagure.io/virt-viewer
 
+Building
+--------
+
+Basic build (GTK 3 client library):
+
+    meson setup build
+    ninja -C build
+
+GTK 4 client library (can be combined with the default GTK 3 build):
+
+    meson setup build -Dgtk4=enabled
+
+GTK 4 only (no GTK 3):
+
+    meson setup build -Dgtk=disabled -Dgtk4=enabled
+
 Build dependencies:
 ------------------
 
@@ -47,6 +69,12 @@ Build dependencies:
 
 >>>
     dnf builddep spice-gtk
+>>>
+
+For GTK 4 support, also install:
+
+>>>
+    dnf install gtk4-devel
 >>>
 
 * or install:
