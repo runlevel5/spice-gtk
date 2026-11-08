@@ -18,12 +18,18 @@ Project content
 
 * **libspice-client-gtk-3.0**
 
-    provides gtk widget to show spice display and accept user input.
+    Provides a GTK 3 widget to show spice display and accept user input.
     * SpiceDisplay (see spice-widget.h)
+
+* **libspice-client-gtk-4.0** *(optional)*
+
+    Provides a GTK 4 widget with the same API surface, built from
+    native GTK 4 code in `src/gtk4/`.  Enable with `-Dgtk4=enabled`.
+    Can be built alongside the GTK 3 library.
 
 * **spicy**
 
-   a gtk test client. The recommended client for end user is
+   A GTK 3 test client. The recommended client for end user is
    [virt-viewer]
 
 * **spicy-screenshot**
@@ -40,25 +46,60 @@ Project content
 
 [virt-viewer]: https://pagure.io/virt-viewer
 
-Build dependencies:
+Building
+--------
+
+The default build produces the GTK 3 client library and the `spicy`
+test client:
+
+```sh
+meson setup build
+ninja -C build
+```
+
+To also build the optional GTK 4 client library
+(`libspice-client-gtk-4.0`) alongside the GTK 3 one:
+
+```sh
+meson setup build -Dgtk4=enabled
+ninja -C build
+```
+
+To build only the GTK 4 library, without GTK 3:
+
+```sh
+meson setup build -Dgtk=disabled -Dgtk4=enabled
+ninja -C build
+```
+
+Build dependencies
 ------------------
 
-* On Fedora use:
+On Fedora, install the build dependencies of the packaged spice-gtk:
 
->>>
-    dnf builddep spice-gtk
->>>
+```sh
+dnf builddep spice-gtk
+```
 
-* or install:
+or install them explicitly:
 
->>>
-    meson ninja gtk3-devel spice-protocol openssl-devel pulseaudio-libs-devel pixman-devel
-    gobject-introspection-devel libjpeg-turbo-devel zlib-devel cyrus-sasl-devel gtk-doc
-    gettext-devel vala vala-tools python3 python3-pyparsing
->>>
+```sh
+dnf install meson ninja-build gtk3-devel spice-protocol openssl-devel \
+    pulseaudio-libs-devel pixman-devel json-glib-devel \
+    gobject-introspection-devel libjpeg-turbo-devel zlib-devel \
+    cyrus-sasl-devel gtk-doc gettext-devel vala vala-tools \
+    python3 python3-pyparsing
+```
+
+For GTK 4 support, also install:
+
+```sh
+dnf install gtk4-devel
+```
 
 The GStreamer backend needs:
 
->>>
-    gstreamer1-devel gstreamer1-plugins-base-devel gstreamer1-plugins-good gstreamer1-plugins-bad-free
->>>
+```sh
+dnf install gstreamer1-devel gstreamer1-plugins-base-devel \
+    gstreamer1-plugins-good gstreamer1-plugins-bad-free
+```

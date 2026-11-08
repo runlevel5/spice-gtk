@@ -4,7 +4,8 @@ option('gtk',
 
 option('gtk4',
     type : 'feature',
-    description: 'Enable gtk4 support (builds spice-client-gtk-4.0)')
+    value : 'disabled',
+    description: 'Enable gtk4 support (builds spice-client-gtk-4.0, opt-in)')
 
 option('wayland-protocols',
     type : 'feature',
